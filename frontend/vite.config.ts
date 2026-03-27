@@ -7,7 +7,9 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://panel.automatizacionesspk.com:8000',
+        // Local dev → external URL de EasyPanel (puerto 80)
+        // Dentro de Docker → http://trabajo_calzalindo-api-nomina:80
+        target: 'http://panel.automatizacionesspk.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
