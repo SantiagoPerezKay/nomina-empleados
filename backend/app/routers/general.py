@@ -146,6 +146,13 @@ async def listar_asignaciones(
     r = await db.execute(q)
     return r.scalars().all()
 
+@turnos_router.delete("/{id}", status_code=204)
+async def eliminar_turno(id: int, db: AsyncSession = Depends(get_db),
+                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    t = await db.get(Turno, id)
+    if not t: raise HTTPException(404, "Turno no encontrado")
+    t.activo = False; await db.commit()
+
 @turnos_router.post("/asignaciones", response_model=AsignacionTurnoOut, status_code=201)
 async def asignar_turno(body: AsignacionTurnoCreate, db: AsyncSession = Depends(get_db),
                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
