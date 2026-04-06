@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +6,10 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
-from app.models.models import Nomina, NominaDetalle, PeriodoNomina, Contrato, EventoEmpleado, ConceptoNomina
+from app.models.models import (
+    Nomina, NominaDetalle, PeriodoNomina, Contrato,
+    EventoEmpleado, CategoriaEvento, ConceptoNomina, Feriado,
+)
 from app.models.usuario import Usuario
 from app.schemas.schemas import NominaCreate, NominaUpdate, NominaOut, NominaDetalleCreate, NominaDetalleOut
 
@@ -35,6 +39,14 @@ async def _recalcular_y_guardar(nomina: Nomina, db: AsyncSession):
     await db.refresh(nomina)
 
 
+async def _get_feriados_set(fecha_inicio: date, fecha_fin: date, db: AsyncSession) -> set:
+    """Devuelve un set de fechas que son feriados dentro del rango dado."""
+    r = await db.execute(
+        select(Feriado.fecha).where(Feriado.fecha >= fecha_inicio, Feriado.fecha <= fecha_fin)
+    )
+    return {row[0] for row in r.fetchall()}
+
+
 @router.post("/generar-borrador", response_model=NominaOut, status_code=201)
 async def generar_borrador(
     body: GenerarBorradorReq,
@@ -54,7 +66,8 @@ async def generar_borrador(
     if not contrato:
         raise HTTPException(400, "Empleado no tiene contrato activo")
 
-    salario_base = contrato.salario_mensual or 0
+    es_mensual = contrato.tipo_contrato == "mensual"
+    salario_base = float(contrato.salario_mensual or 0) if es_mensual else 0
 
     nomina = Nomina(
         empleado_id=body.empleado_id,
@@ -68,44 +81,128 @@ async def generar_borrador(
 
     detalles = []
 
-    # Concepto sueldo base
-    r_cs = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
-    concepto_sueldo = r_cs.scalars().first()
-    c_id = concepto_sueldo.id if concepto_sueldo else 1
+    # ── Concepto sueldo base (solo empleados mensuales) ──────────────────────
+    if es_mensual:
+        r_cs = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
+        concepto_sueldo = r_cs.scalars().first()
+        c_id = concepto_sueldo.id if concepto_sueldo else 1
+        det_base = NominaDetalle(
+            nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",
+            cantidad=1, monto_unitario=salario_base, monto_total=salario_base,
+            observacion="Sueldo base",
+        )
+        db.add(det_base)
+        detalles.append(det_base)
 
-    det_base = NominaDetalle(
-        nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",
-        cantidad=1, monto_unitario=salario_base, monto_total=salario_base,
-        observacion="Sueldo base",
+    # ── Calcular valor de la hora ─────────────────────────────────────────────
+    # Mensual: valor_hora = salario / (días_hábiles_período * 8 horas)
+    # Por hora: usar tarifa directamente
+    dias_periodo = (periodo.fecha_fin - periodo.fecha_inicio).days + 1
+    dias_habiles = sum(
+        1 for i in range(dias_periodo)
+        if (periodo.fecha_inicio.toordinal() + i) % 7 not in (6, 0)  # excluye dom(6) y sáb(0) no, solo dom
     )
-    db.add(det_base)
-    detalles.append(det_base)
+    dias_habiles = max(dias_habiles, 1)
 
-    # Descuentos por eventos no justificados aprobados en el período
+    if es_mensual:
+        horas_por_dia = 8
+        valor_hora = float(salario_base) / (dias_habiles * horas_por_dia) if salario_base else 0
+    else:
+        valor_hora = float(contrato.tarifa_hora or 0)
+
+    # ── Feriados del período ──────────────────────────────────────────────────
+    feriados_set = await _get_feriados_set(periodo.fecha_inicio, periodo.fecha_fin, db)
+
+    # ── Buscar categoría de horas extras ─────────────────────────────────────
+    r_cat_extra = await db.execute(
+        select(CategoriaEvento).where(CategoriaEvento.codigo == "horas_extras")
+    )
+    cat_extra = r_cat_extra.scalars().first()
+
+    # ── Eventos aprobados del período ─────────────────────────────────────────
     r_ev = await db.execute(
         select(EventoEmpleado).where(
             EventoEmpleado.empleado_id == body.empleado_id,
             EventoEmpleado.fecha_inicial >= periodo.fecha_inicio,
             EventoEmpleado.fecha_inicial <= periodo.fecha_fin,
-            EventoEmpleado.justificado == False,
             EventoEmpleado.estado == "aprobado",
         )
     )
     eventos = r_ev.scalars().all()
 
+    # Conceptos de deducciones y horas extras
     r_desc = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "ausencia_desc"))
     concepto_desc = r_desc.scalars().first()
     desc_id = concepto_desc.id if concepto_desc else 2
-    valor_dia = float(salario_base) / 30 if salario_base else 0
+
+    r_ext50 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "hora_extra_50"))
+    concepto_ext50 = r_ext50.scalars().first()
+    ext50_id = concepto_ext50.id if concepto_ext50 else None
+
+    r_ext100 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "hora_extra_100"))
+    concepto_ext100 = r_ext100.scalars().first()
+    ext100_id = concepto_ext100.id if concepto_ext100 else None
+
+    valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * 8
 
     for ev in eventos:
-        det_desc = NominaDetalle(
-            nomina_id=nomina.id, concepto_id=desc_id, tipo="deduccion",
-            cantidad=1, monto_unitario=valor_dia, monto_total=valor_dia,
-            evento_id=ev.id, observacion="Descuento por evento no justificado",
+        fecha_ev = ev.fecha_inicial.date() if hasattr(ev.fecha_inicial, 'date') else ev.fecha_inicial
+
+        # Horas extras
+        if cat_extra and ev.categoria_evento_id == cat_extra.id and ev.horas_cantidad:
+            horas = float(ev.horas_cantidad)
+            # Determinar porcentaje: si el evento ya lo tiene, usarlo; sino auto-detectar por feriado
+            if ev.porcentaje_extra:
+                pct = ev.porcentaje_extra
+            else:
+                pct = 100 if fecha_ev in feriados_set else 50
+
+            if pct == 100 and ext100_id:
+                monto_unitario = valor_hora * 2.0
+                det = NominaDetalle(
+                    nomina_id=nomina.id, concepto_id=ext100_id, tipo="ingreso",
+                    cantidad=horas, monto_unitario=monto_unitario,
+                    monto_total=monto_unitario * horas,
+                    evento_id=ev.id,
+                    observacion=f"Hs extras al 100% ({horas}h) {'- feriado' if fecha_ev in feriados_set else '- guardia'}",
+                )
+                db.add(det)
+                detalles.append(det)
+            elif pct == 50 and ext50_id:
+                monto_unitario = valor_hora * 1.5
+                det = NominaDetalle(
+                    nomina_id=nomina.id, concepto_id=ext50_id, tipo="ingreso",
+                    cantidad=horas, monto_unitario=monto_unitario,
+                    monto_total=monto_unitario * horas,
+                    evento_id=ev.id,
+                    observacion=f"Hs extras al 50% ({horas}h)",
+                )
+                db.add(det)
+                detalles.append(det)
+
+        # Descuentos por ausencias no justificadas
+        elif not ev.justificado:
+            det_desc = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=desc_id, tipo="deduccion",
+                cantidad=1, monto_unitario=valor_dia, monto_total=valor_dia,
+                evento_id=ev.id, observacion="Descuento por evento no justificado",
+            )
+            db.add(det_desc)
+            detalles.append(det_desc)
+
+    # Para empleados por hora: sumar horas trabajadas como ingreso base
+    if not es_mensual and valor_hora > 0:
+        r_cs = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
+        concepto_sueldo = r_cs.scalars().first()
+        c_id = concepto_sueldo.id if concepto_sueldo else 1
+        # El monto base por hora se calcula al recalcular manualmente; aquí se pone 0 como placeholder
+        det_base = NominaDetalle(
+            nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",
+            cantidad=0, monto_unitario=valor_hora, monto_total=0,
+            observacion=f"Horas trabajadas (tarifa: ${valor_hora:.2f}/h) - completar cantidad",
         )
-        db.add(det_desc)
-        detalles.append(det_desc)
+        db.add(det_base)
+        detalles.append(det_base)
 
     await db.flush()
     ingresos, deducciones, neto = _calcular_totales(detalles)

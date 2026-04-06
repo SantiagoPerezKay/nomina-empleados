@@ -6,6 +6,7 @@ import type {
   CategoriaEgreso, CategoriaEvento,
   ConceptoNomina, ConceptoNominaCreate,
   Encargado, EncargadoCreate,
+  AsignacionTurno, AsignacionTurnoCreate,
 } from '../types'
 
 // Sucursales
@@ -25,6 +26,13 @@ export const getTurnos = async () => (await client.get<Turno[]>('/turnos')).data
 export const createTurno = async (d: TurnoCreate) => (await client.post<Turno>('/turnos', d)).data
 export const updateTurno = async (id: number, d: Partial<TurnoCreate>) => (await client.put<Turno>(`/turnos/${id}`, d)).data
 export const deleteTurno = async (id: number) => { await client.delete(`/turnos/${id}`) }
+
+// Asignaciones de turno
+export const getAsignacionesTurno = async (empleado_id?: number) =>
+  (await client.get<AsignacionTurno[]>('/turnos/asignaciones', { params: { empleado_id } })).data
+export const createAsignacionTurno = async (d: AsignacionTurnoCreate) =>
+  (await client.post<AsignacionTurno>('/turnos/asignaciones', d)).data
+export const deleteAsignacionTurno = async (id: number) => { await client.delete(`/turnos/asignaciones/${id}`) }
 
 // Categorías de egreso
 export const getCatEgresos = async () => (await client.get<CategoriaEgreso[]>('/cat-egresos')).data

@@ -15,6 +15,7 @@ from app.routers.general import (
     contratos_router,
     departamentos_router,
     encargados_router,
+    feriados_router,
     periodos_router,
     sucursales_router,
     turnos_router,
@@ -51,6 +52,7 @@ app.include_router(encargados_router, prefix="/api")
 app.include_router(cat_egreso_router, prefix="/api")
 app.include_router(cat_evento_router, prefix="/api")
 app.include_router(conceptos_router, prefix="/api")
+app.include_router(feriados_router, prefix="/api")
 
 
 @app.get("/", tags=["Health"])

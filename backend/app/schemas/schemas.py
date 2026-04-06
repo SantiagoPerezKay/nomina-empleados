@@ -178,6 +178,43 @@ class ContratoOut(BaseSchema):
     observacion: Optional[str] = None
 
 
+# ─── BLOQUES HORARIO ───────────────────────────────────────────────────────────
+
+class BloqueHorarioCreate(BaseSchema):
+    orden: int = 1
+    hora_inicio: time
+    hora_fin: time
+
+class BloqueHorarioUpdate(BaseSchema):
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
+
+class BloqueHorarioOut(BaseSchema):
+    id: int
+    turno_id: int
+    orden: int
+    hora_inicio: time
+    hora_fin: time
+
+
+# ─── FERIADOS ──────────────────────────────────────────────────────────────────
+
+class FeriadoCreate(BaseSchema):
+    fecha: date
+    nombre: str
+    tipo: str = "nacional"   # nacional | provincial | empresa
+
+class FeriadoUpdate(BaseSchema):
+    nombre: Optional[str] = None
+    tipo: Optional[str] = None
+
+class FeriadoOut(BaseSchema):
+    id: int
+    fecha: date
+    nombre: str
+    tipo: str
+
+
 # ─── TURNOS ────────────────────────────────────────────────────────────────────
 
 class TurnoCreate(BaseSchema):
@@ -200,6 +237,7 @@ class TurnoOut(BaseSchema):
     hora_salida: time
     tolerancia_min: int
     activo: bool
+    bloques: List[BloqueHorarioOut] = []
 
 class AsignacionTurnoCreate(BaseSchema):
     empleado_id: int
@@ -207,6 +245,8 @@ class AsignacionTurnoCreate(BaseSchema):
     sucursal_id: int
     fecha_desde: date
     fecha_hasta: Optional[date] = None
+    # 1=lunes, 2=martes, ..., 6=sábado, None=todos los días
+    dia_semana: Optional[int] = None
 
 class AsignacionTurnoOut(BaseSchema):
     id: int
@@ -215,6 +255,7 @@ class AsignacionTurnoOut(BaseSchema):
     sucursal_id: int
     fecha_desde: date
     fecha_hasta: Optional[date] = None
+    dia_semana: Optional[int] = None
 
 
 # ─── ENCARGADOS ────────────────────────────────────────────────────────────────
@@ -273,6 +314,9 @@ class EventoEmpleadoCreate(BaseSchema):
     fecha_final: Optional[datetime] = None
     observacion: Optional[str] = None
     up_calendar: bool = False
+    # Campos para eventos de horas extras
+    horas_cantidad: Optional[Decimal] = None
+    porcentaje_extra: Optional[int] = None   # 50 o 100; None = se determina automáticamente
 
 class EventoEmpleadoUpdate(BaseSchema):
     encargado_id: Optional[int] = None
@@ -281,6 +325,8 @@ class EventoEmpleadoUpdate(BaseSchema):
     observacion: Optional[str] = None
     justificado: Optional[bool] = None
     up_calendar: Optional[bool] = None
+    horas_cantidad: Optional[Decimal] = None
+    porcentaje_extra: Optional[int] = None
 
 class EventoEmpleadoOut(BaseSchema):
     id: int
@@ -296,6 +342,8 @@ class EventoEmpleadoOut(BaseSchema):
     motivo_actualizacion: Optional[str] = None
     up_calendar: bool
     google_event_id: Optional[str] = None
+    horas_cantidad: Optional[Decimal] = None
+    porcentaje_extra: Optional[int] = None
     created_at: datetime
 
 class AprobarEventoRequest(BaseSchema):
@@ -320,6 +368,7 @@ class EventoHistorialOut(BaseSchema):
 class AsistenciaCreate(BaseSchema):
     empleado_id: int
     turno_id: Optional[int] = None
+    bloque_id: Optional[int] = None
     fecha: date
     hora_entrada: time
     hora_salida: Optional[time] = None
@@ -328,6 +377,7 @@ class AsistenciaCreate(BaseSchema):
 
 class AsistenciaUpdate(BaseSchema):
     turno_id: Optional[int] = None
+    bloque_id: Optional[int] = None
     hora_entrada: Optional[time] = None
     hora_salida: Optional[time] = None
     estado: Optional[str] = None
@@ -337,6 +387,7 @@ class AsistenciaOut(BaseSchema):
     id: int
     empleado_id: int
     turno_id: Optional[int] = None
+    bloque_id: Optional[int] = None
     fecha: date
     hora_entrada: time
     hora_salida: Optional[time] = None

@@ -85,6 +85,25 @@ class Turno(Base):
     activo          = Column(Boolean, default=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    bloques         = relationship("BloqueHorario", back_populates="turno", order_by="BloqueHorario.orden")
+
+
+class BloqueHorario(Base):
+    __tablename__ = "bloques_horario"
+    id          = Column(Integer, primary_key=True)
+    turno_id    = Column(Integer, ForeignKey("turnos.id"), nullable=False)
+    orden       = Column(Integer, nullable=False, default=1)  # 1=primero, 2=segundo
+    hora_inicio = Column(Time, nullable=False)
+    hora_fin    = Column(Time, nullable=False)
+    turno       = relationship("Turno", back_populates="bloques")
+
+
+class Feriado(Base):
+    __tablename__ = "feriados"
+    id      = Column(Integer, primary_key=True)
+    fecha   = Column(Date, nullable=False, unique=True)
+    nombre  = Column(String(200), nullable=False)
+    tipo    = Column(String(50), nullable=False, default="nacional")  # nacional|provincial|empresa
 
 
 class AsignacionTurno(Base):
@@ -95,6 +114,8 @@ class AsignacionTurno(Base):
     sucursal_id     = Column(Integer, ForeignKey("sucursales.id"), nullable=False)
     fecha_desde     = Column(Date, nullable=False)
     fecha_hasta     = Column(Date, nullable=True)
+    # 1=lunes ... 6=sábado, NULL=todos los días del rango
+    dia_semana      = Column(Integer, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
 
 
@@ -138,6 +159,9 @@ class EventoEmpleado(Base):
     motivo_actualizacion = Column(Text, nullable=True)
     up_calendar         = Column(Boolean, default=False)
     google_event_id     = Column(String(255), nullable=True)
+    # Campos para horas extras
+    horas_cantidad      = Column(Numeric(6, 2), nullable=True)
+    porcentaje_extra    = Column(Integer, nullable=True)  # 50 o 100
     created_at          = Column(DateTime, default=datetime.utcnow)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -212,6 +236,7 @@ class Asistencia(Base):
     id              = Column(Integer, primary_key=True)
     empleado_id     = Column(Integer, ForeignKey("empleados.id"), nullable=False)
     turno_id        = Column(Integer, ForeignKey("turnos.id"), nullable=True)
+    bloque_id       = Column(Integer, ForeignKey("bloques_horario.id"), nullable=True)
     fecha           = Column(Date, nullable=False)
     hora_entrada    = Column(Time, nullable=False)
     hora_salida     = Column(Time, nullable=True)

@@ -9,9 +9,8 @@ export default defineConfig({
       '/api': {
         // Local dev → external URL de EasyPanel (puerto 80)
         // Dentro de Docker → http://trabajo_calzalindo-api-nomina:80
-        target: 'http://panel.automatizacionesspk.com',
+        target: 'https://trabajo-calzalindo-api-nomina.ldnquj.easypanel.host',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

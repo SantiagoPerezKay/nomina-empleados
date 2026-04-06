@@ -9,12 +9,31 @@ import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconArrowLeft, IconPlus } from '@tabler/icons-react'
+import { IconArrowLeft, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
   getAsistenciasEmpleado, getNominasEmpleado, createContrato,
 } from '../api/empleados'
-import type { ContratoCreate } from '../types'
+import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno } from '../api/general'
+import type { ContratoCreate, AsignacionTurnoCreate } from '../types'
+
+const DIAS_SEMANA = [
+  { value: '1', label: 'Lunes' },
+  { value: '2', label: 'Martes' },
+  { value: '3', label: 'Miércoles' },
+  { value: '4', label: 'Jueves' },
+  { value: '5', label: 'Viernes' },
+  { value: '6', label: 'Sábado' },
+  { value: '7', label: 'Domingo' },
+]
+
+const asignacionSchema = z.object({
+  turno_id: z.coerce.number().min(1, 'Requerido'),
+  sucursal_id: z.coerce.number().min(1, 'Requerido'),
+  fecha_desde: z.string().min(1, 'Requerido'),
+  fecha_hasta: z.string().optional(),
+  dia_semana: z.coerce.number().nullable().optional(),
+})
 
 const contratoSchema = z.object({
   tipo_contrato: z.enum(['mensual', 'por_hora']),
@@ -31,11 +50,16 @@ export default function EmpleadoDetallePage() {
   const qc = useQueryClient()
   const [contratoOpened, { open: openContrato, close: closeContrato }] = useDisclosure()
 
+  const [asignacionOpened, { open: openAsignacion, close: closeAsignacion }] = useDisclosure()
+
   const { data: emp, isLoading } = useQuery({ queryKey: ['empleado', empId], queryFn: () => getEmpleado(empId) })
   const { data: contratos } = useQuery({ queryKey: ['empleado-contratos', empId], queryFn: () => getContratosEmpleado(empId) })
   const { data: eventos } = useQuery({ queryKey: ['empleado-eventos', empId], queryFn: () => getEventosEmpleado(empId) })
   const { data: asistencias } = useQuery({ queryKey: ['empleado-asistencias', empId], queryFn: () => getAsistenciasEmpleado(empId) })
   const { data: nominas } = useQuery({ queryKey: ['empleado-nominas', empId], queryFn: () => getNominasEmpleado(empId) })
+  const { data: asignaciones } = useQuery({ queryKey: ['empleado-asignaciones', empId], queryFn: () => getAsignacionesTurno(empId) })
+  const { data: turnos } = useQuery({ queryKey: ['turnos'], queryFn: getTurnos })
+  const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
 
   const contratoMutation = useMutation({
     mutationFn: (data: ContratoCreate) => createContrato({ ...data, empleado_id: empId }),
@@ -46,9 +70,30 @@ export default function EmpleadoDetallePage() {
     },
   })
 
+  const asignacionMutation = useMutation({
+    mutationFn: (data: AsignacionTurnoCreate) => createAsignacionTurno({ ...data, empleado_id: empId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-asignaciones', empId] })
+      notifications.show({ message: 'Horario asignado', color: 'green' })
+      asignacionForm.reset()
+      closeAsignacion()
+    },
+  })
+
+  const deleteAsignacionMutation = useMutation({
+    mutationFn: (id: number) => deleteAsignacionTurno(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-asignaciones', empId] })
+      notifications.show({ message: 'Asignación eliminada', color: 'orange' })
+    },
+  })
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contratoForm = useForm<z.infer<typeof contratoSchema>>({ resolver: zodResolver(contratoSchema) as any })
   const tipoContrato = contratoForm.watch('tipo_contrato')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const asignacionForm = useForm<z.infer<typeof asignacionSchema>>({ resolver: zodResolver(asignacionSchema) as any })
 
   if (isLoading) return <Skeleton h={400} />
 
@@ -81,6 +126,7 @@ export default function EmpleadoDetallePage() {
       <Tabs defaultValue="contratos">
         <Tabs.List>
           <Tabs.Tab value="contratos">Contratos ({contratos?.length ?? 0})</Tabs.Tab>
+          <Tabs.Tab value="horarios">Horarios ({asignaciones?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="eventos">Eventos ({eventos?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="asistencias">Asistencias ({asistencias?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="nominas">Nóminas ({nominas?.length ?? 0})</Tabs.Tab>
@@ -124,6 +170,75 @@ export default function EmpleadoDetallePage() {
                     </Table.Td>
                   </Table.Tr>
                 ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Tabs.Panel>
+
+        {/* Horarios */}
+        <Tabs.Panel value="horarios" pt="sm">
+          <Group justify="space-between" mb="sm">
+            <Text size="sm" c="dimmed">
+              Asignación de turnos por día. Si no se reporta novedad, el empleado cumplió su horario normalmente.
+            </Text>
+            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={openAsignacion}>
+              Asignar horario
+            </Button>
+          </Group>
+          <Table.ScrollContainer minWidth={600}>
+            <Table striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Turno</Table.Th>
+                  <Table.Th>Día de semana</Table.Th>
+                  <Table.Th>Sucursal</Table.Th>
+                  <Table.Th>Desde</Table.Th>
+                  <Table.Th>Hasta</Table.Th>
+                  <Table.Th></Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {(asignaciones ?? []).length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text size="sm" c="dimmed" ta="center">Sin horarios asignados</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {(asignaciones ?? []).map((a) => {
+                  const turno = turnos?.find(t => t.id === a.turno_id)
+                  const sucursal = sucursales?.find(s => s.id === a.sucursal_id)
+                  const diaNombre = a.dia_semana
+                    ? DIAS_SEMANA.find(d => d.value === String(a.dia_semana))?.label
+                    : 'Todos los días'
+                  return (
+                    <Table.Tr key={a.id}>
+                      <Table.Td fw={500}>
+                        {turno?.nombre ?? `Turno #${a.turno_id}`}
+                        <Text size="xs" c="dimmed">
+                          {turno ? `${turno.hora_entrada.slice(0,5)} – ${turno.hora_salida.slice(0,5)}` : ''}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="light" color={a.dia_semana ? 'blue' : 'gray'} size="sm">
+                          {diaNombre}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{sucursal?.nombre ?? `Suc. #${a.sucursal_id}`}</Table.Td>
+                      <Table.Td>{a.fecha_desde}</Table.Td>
+                      <Table.Td>{a.fecha_hasta ?? <Text size="xs" c="green">Actual</Text>}</Table.Td>
+                      <Table.Td>
+                        <ActionIcon
+                          color="red" variant="subtle" size="sm"
+                          onClick={() => deleteAsignacionMutation.mutate(a.id)}
+                          loading={deleteAsignacionMutation.isPending}
+                        >
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  )
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -223,6 +338,42 @@ export default function EmpleadoDetallePage() {
           </Table.ScrollContainer>
         </Tabs.Panel>
       </Tabs>
+
+      {/* Modal asignar horario */}
+      <Modal opened={asignacionOpened} onClose={closeAsignacion} title="Asignar horario" size="sm">
+        <form onSubmit={asignacionForm.handleSubmit((d) => asignacionMutation.mutate(d as unknown as AsignacionTurnoCreate))}>
+          <Stack gap="sm">
+            <Select
+              label="Turno *"
+              placeholder="Seleccionar turno"
+              data={(turnos ?? []).map(t => ({
+                value: String(t.id),
+                label: `${t.nombre} (${t.hora_entrada.slice(0,5)}–${t.hora_salida.slice(0,5)})`,
+              }))}
+              onChange={(v) => asignacionForm.setValue('turno_id', Number(v))}
+              error={asignacionForm.formState.errors.turno_id?.message}
+            />
+            <Select
+              label="Sucursal *"
+              placeholder="Seleccionar sucursal"
+              data={(sucursales ?? []).filter(s => s.activo).map(s => ({ value: String(s.id), label: s.nombre }))}
+              onChange={(v) => asignacionForm.setValue('sucursal_id', Number(v))}
+              error={asignacionForm.formState.errors.sucursal_id?.message}
+            />
+            <Select
+              label="Día de semana"
+              placeholder="Todos los días"
+              clearable
+              data={DIAS_SEMANA}
+              onChange={(v) => asignacionForm.setValue('dia_semana', v ? Number(v) : null)}
+            />
+            <TextInput label="Fecha desde *" type="date" {...asignacionForm.register('fecha_desde')}
+              error={asignacionForm.formState.errors.fecha_desde?.message} />
+            <TextInput label="Fecha hasta" type="date" {...asignacionForm.register('fecha_hasta')} />
+            <Button type="submit" loading={asignacionMutation.isPending}>Asignar</Button>
+          </Stack>
+        </form>
+      </Modal>
 
       {/* Modal nuevo contrato */}
       <Modal opened={contratoOpened} onClose={closeContrato} title="Nuevo contrato" size="sm">

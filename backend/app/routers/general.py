@@ -1,23 +1,26 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import (
-    AsignacionTurno, CategoriaEgreso, CategoriaEvento, ConceptoNomina,
-    Contrato, Departamento, Encargado, PeriodoNomina, Sucursal, Turno,
+    AsignacionTurno, BloqueHorario, CategoriaEgreso, CategoriaEvento,
+    ConceptoNomina, Contrato, Departamento, Encargado, Feriado,
+    PeriodoNomina, Sucursal, Turno,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
     AsignacionTurnoCreate, AsignacionTurnoOut,
+    BloqueHorarioCreate, BloqueHorarioOut, BloqueHorarioUpdate,
     CategoriaEgresoCreate, CategoriaEgresoOut,
     CategoriaEventoCreate, CategoriaEventoOut,
     ConceptoNominaCreate, ConceptoNominaOut,
     ContratoCreate, ContratoOut, ContratoUpdate,
     DepartamentoCreate, DepartamentoOut, DepartamentoUpdate,
     EncargadoCreate, EncargadoOut, EncargadoUpdate,
+    FeriadoCreate, FeriadoOut, FeriadoUpdate,
     PeriodoNominaCreate, PeriodoNominaOut,
     SucursalCreate, SucursalOut, SucursalUpdate,
     TurnoCreate, TurnoOut, TurnoUpdate,
@@ -130,11 +133,61 @@ async def actualizar_turno(id: int, body: TurnoUpdate, db: AsyncSession = Depend
     for k, v in body.model_dump(exclude_unset=True).items(): setattr(t, k, v)
     await db.commit(); await db.refresh(t); return t
 
+@turnos_router.get("/asignaciones", response_model=list[AsignacionTurnoOut])
+async def listar_asignaciones(
+    empleado_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    q = select(AsignacionTurno)
+    if empleado_id:
+        q = q.where(AsignacionTurno.empleado_id == empleado_id)
+    q = q.order_by(AsignacionTurno.fecha_desde.desc())
+    r = await db.execute(q)
+    return r.scalars().all()
+
 @turnos_router.post("/asignaciones", response_model=AsignacionTurnoOut, status_code=201)
 async def asignar_turno(body: AsignacionTurnoCreate, db: AsyncSession = Depends(get_db),
                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
     a = AsignacionTurno(**body.model_dump())
     db.add(a); await db.commit(); await db.refresh(a); return a
+
+@turnos_router.delete("/asignaciones/{id}", status_code=204)
+async def eliminar_asignacion(id: int, db: AsyncSession = Depends(get_db),
+                               _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    a = await db.get(AsignacionTurno, id)
+    if not a: raise HTTPException(404, "Asignación no encontrada")
+    await db.delete(a); await db.commit()
+
+@turnos_router.get("/{turno_id}/bloques", response_model=list[BloqueHorarioOut])
+async def listar_bloques(turno_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    t = await db.get(Turno, turno_id)
+    if not t: raise HTTPException(404, "Turno no encontrado")
+    r = await db.execute(select(BloqueHorario).where(BloqueHorario.turno_id == turno_id).order_by(BloqueHorario.orden))
+    return r.scalars().all()
+
+@turnos_router.post("/{turno_id}/bloques", response_model=BloqueHorarioOut, status_code=201)
+async def crear_bloque(turno_id: int, body: BloqueHorarioCreate, db: AsyncSession = Depends(get_db),
+                        _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    t = await db.get(Turno, turno_id)
+    if not t: raise HTTPException(404, "Turno no encontrado")
+    b = BloqueHorario(turno_id=turno_id, **body.model_dump())
+    db.add(b); await db.commit(); await db.refresh(b); return b
+
+@turnos_router.put("/{turno_id}/bloques/{id}", response_model=BloqueHorarioOut)
+async def actualizar_bloque(turno_id: int, id: int, body: BloqueHorarioUpdate,
+                             db: AsyncSession = Depends(get_db), _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    b = await db.get(BloqueHorario, id)
+    if not b or b.turno_id != turno_id: raise HTTPException(404, "Bloque no encontrado")
+    for k, v in body.model_dump(exclude_unset=True).items(): setattr(b, k, v)
+    await db.commit(); await db.refresh(b); return b
+
+@turnos_router.delete("/{turno_id}/bloques/{id}", status_code=204)
+async def eliminar_bloque(turno_id: int, id: int, db: AsyncSession = Depends(get_db),
+                           _=Depends(require_roles("superadmin", "admin"))):
+    b = await db.get(BloqueHorario, id)
+    if not b or b.turno_id != turno_id: raise HTTPException(404, "Bloque no encontrado")
+    await db.delete(b); await db.commit()
 
 
 # ─── CONTRATOS ────────────────────────────────────────────────────────────────
@@ -298,3 +351,48 @@ async def desactivar_encargado(id: int, db: AsyncSession = Depends(get_db),
     e = await db.get(Encargado, id)
     if not e: raise HTTPException(404, "Encargado no encontrado")
     e.activo = False; await db.commit()
+
+
+# ─── FERIADOS ─────────────────────────────────────────────────────────────────
+
+feriados_router = APIRouter(prefix="/feriados", tags=["Feriados"])
+
+@feriados_router.get("", response_model=list[FeriadoOut])
+async def listar_feriados(
+    anio: int | None = Query(None, alias="año"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    q = select(Feriado).order_by(Feriado.fecha)
+    if anio:
+        from sqlalchemy import extract
+        q = q.where(extract("year", Feriado.fecha) == anio)
+    r = await db.execute(q)
+    return r.scalars().all()
+
+@feriados_router.get("/{id}", response_model=FeriadoOut)
+async def obtener_feriado(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    f = await db.get(Feriado, id)
+    if not f: raise HTTPException(404, "Feriado no encontrado")
+    return f
+
+@feriados_router.post("", response_model=FeriadoOut, status_code=201)
+async def crear_feriado(body: FeriadoCreate, db: AsyncSession = Depends(get_db),
+                         _=Depends(require_roles("superadmin", "admin"))):
+    f = Feriado(**body.model_dump())
+    db.add(f); await db.commit(); await db.refresh(f); return f
+
+@feriados_router.put("/{id}", response_model=FeriadoOut)
+async def actualizar_feriado(id: int, body: FeriadoUpdate, db: AsyncSession = Depends(get_db),
+                              _=Depends(require_roles("superadmin", "admin"))):
+    f = await db.get(Feriado, id)
+    if not f: raise HTTPException(404, "Feriado no encontrado")
+    for k, v in body.model_dump(exclude_unset=True).items(): setattr(f, k, v)
+    await db.commit(); await db.refresh(f); return f
+
+@feriados_router.delete("/{id}", status_code=204)
+async def eliminar_feriado(id: int, db: AsyncSession = Depends(get_db),
+                            _=Depends(require_roles("superadmin", "admin"))):
+    f = await db.get(Feriado, id)
+    if not f: raise HTTPException(404, "Feriado no encontrado")
+    await db.delete(f); await db.commit()

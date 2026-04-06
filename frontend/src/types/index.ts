@@ -186,6 +186,26 @@ export interface ReporteEmpleadoActivo {
   salario_mensual: number | null; tarifa_hora: number | null
 }
 
+// ── Asignaciones de Turno ─────────────────────────────────────────────────────
+export interface AsignacionTurno {
+  id: number
+  empleado_id: number
+  turno_id: number
+  sucursal_id: number
+  fecha_desde: string
+  fecha_hasta: string | null
+  dia_semana: number | null   // 1=lunes ... 6=sábado, null=todos los días
+  turno_nombre?: string
+}
+export interface AsignacionTurnoCreate {
+  empleado_id: number
+  turno_id: number
+  sucursal_id: number
+  fecha_desde: string
+  fecha_hasta?: string
+  dia_semana?: number | null
+}
+
 // ── Encargados ────────────────────────────────────────────────────────────────
 export interface Encargado {
   id: number; empleado_id: number; sucursal_id: number
