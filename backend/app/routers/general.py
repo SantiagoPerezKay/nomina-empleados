@@ -7,8 +7,8 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     AsignacionTurno, BloqueHorario, CategoriaEgreso, CategoriaEvento,
-    ConceptoNomina, Contrato, Departamento, Encargado, Feriado,
-    PeriodoNomina, Sucursal, Turno,
+    ConceptoContrato, ConceptoNomina, Contrato, Departamento, Encargado,
+    Feriado, PeriodoNomina, Sucursal, Turno,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
@@ -16,6 +16,7 @@ from app.schemas.schemas import (
     BloqueHorarioCreate, BloqueHorarioOut, BloqueHorarioUpdate,
     CategoriaEgresoCreate, CategoriaEgresoOut,
     CategoriaEventoCreate, CategoriaEventoOut,
+    ConceptoContratoCreate, ConceptoContratoOut, ConceptosContratoBulk,
     ConceptoNominaCreate, ConceptoNominaOut,
     ContratoCreate, ContratoOut, ContratoUpdate,
     DepartamentoCreate, DepartamentoOut, DepartamentoUpdate,
@@ -244,6 +245,84 @@ async def eliminar_contrato(id: int, db: AsyncSession = Depends(get_db),
     c = await db.get(Contrato, id)
     if not c: raise HTTPException(404, "Contrato no encontrado")
     c.activo = False; await db.commit()
+
+
+# ─── CONCEPTOS POR CONTRATO ──────────────────────────────────────────────────
+
+@contratos_router.get("/{id}/conceptos", response_model=list[ConceptoNominaOut])
+async def listar_conceptos_contrato(id: int, db: AsyncSession = Depends(get_db),
+                                     _=Depends(get_current_user)):
+    c = await db.get(Contrato, id)
+    if not c: raise HTTPException(404, "Contrato no encontrado")
+    r = await db.execute(
+        select(ConceptoNomina)
+        .join(ConceptoContrato, ConceptoContrato.concepto_id == ConceptoNomina.id)
+        .where(ConceptoContrato.contrato_id == id)
+        .order_by(ConceptoNomina.tipo, ConceptoNomina.nombre)
+    )
+    return r.scalars().all()
+
+@contratos_router.put("/{id}/conceptos", response_model=list[ConceptoNominaOut])
+async def reemplazar_conceptos_contrato(
+    id: int, body: ConceptosContratoBulk,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles("superadmin", "admin", "rrhh", "liquidador")),
+):
+    """Reemplaza todos los conceptos asignados al contrato de una sola vez."""
+    c = await db.get(Contrato, id)
+    if not c: raise HTTPException(404, "Contrato no encontrado")
+    # Borrar actuales
+    existing = await db.execute(
+        select(ConceptoContrato).where(ConceptoContrato.contrato_id == id)
+    )
+    for cc in existing.scalars().all():
+        await db.delete(cc)
+    # Insertar nuevos
+    for cid in body.concepto_ids:
+        db.add(ConceptoContrato(contrato_id=id, concepto_id=cid))
+    await db.commit()
+    # Devolver la lista completa
+    r = await db.execute(
+        select(ConceptoNomina)
+        .join(ConceptoContrato, ConceptoContrato.concepto_id == ConceptoNomina.id)
+        .where(ConceptoContrato.contrato_id == id)
+        .order_by(ConceptoNomina.tipo, ConceptoNomina.nombre)
+    )
+    return r.scalars().all()
+
+@contratos_router.post("/{id}/conceptos", response_model=ConceptoContratoOut, status_code=201)
+async def agregar_concepto_contrato(id: int, body: ConceptoContratoCreate,
+                                     db: AsyncSession = Depends(get_db),
+                                     _=Depends(require_roles("superadmin", "admin", "rrhh", "liquidador"))):
+    c = await db.get(Contrato, id)
+    if not c: raise HTTPException(404, "Contrato no encontrado")
+    cn = await db.get(ConceptoNomina, body.concepto_id)
+    if not cn: raise HTTPException(404, "Concepto no encontrado")
+    # Verificar duplicado
+    r = await db.execute(
+        select(ConceptoContrato).where(
+            ConceptoContrato.contrato_id == id,
+            ConceptoContrato.concepto_id == body.concepto_id,
+        )
+    )
+    if r.scalar_one_or_none():
+        raise HTTPException(400, "Este concepto ya está asignado al contrato")
+    cc = ConceptoContrato(contrato_id=id, concepto_id=body.concepto_id)
+    db.add(cc); await db.commit(); await db.refresh(cc); return cc
+
+@contratos_router.delete("/{id}/conceptos/{concepto_id}", status_code=204)
+async def quitar_concepto_contrato(id: int, concepto_id: int,
+                                    db: AsyncSession = Depends(get_db),
+                                    _=Depends(require_roles("superadmin", "admin", "rrhh", "liquidador"))):
+    r = await db.execute(
+        select(ConceptoContrato).where(
+            ConceptoContrato.contrato_id == id,
+            ConceptoContrato.concepto_id == concepto_id,
+        )
+    )
+    cc = r.scalar_one_or_none()
+    if not cc: raise HTTPException(404, "Concepto no asignado a este contrato")
+    await db.delete(cc); await db.commit()
 
 
 # ─── CONCEPTOS NOMINA ─────────────────────────────────────────────────────────

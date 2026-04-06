@@ -1,20 +1,22 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   Stack, Title, Tabs, Text, Badge, Group, Button,
   Table, Card, Skeleton, ActionIcon, Modal, TextInput, Select,
+  Checkbox, Divider,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconArrowLeft, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconArrowLeft, IconPlus, IconTrash, IconSettings } from '@tabler/icons-react'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
   getAsistenciasEmpleado, getNominasEmpleado, createContrato,
 } from '../api/empleados'
-import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno } from '../api/general'
+import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato } from '../api/general'
 import type { ContratoCreate, AsignacionTurnoCreate } from '../types'
 
 const DIAS_SEMANA = [
@@ -51,6 +53,9 @@ export default function EmpleadoDetallePage() {
   const [contratoOpened, { open: openContrato, close: closeContrato }] = useDisclosure()
 
   const [asignacionOpened, { open: openAsignacion, close: closeAsignacion }] = useDisclosure()
+  const [conceptosOpened, { open: openConceptos, close: closeConceptos }] = useDisclosure()
+  const [conceptoContratoId, setConceptoContratoId] = useState<number | null>(null)
+  const [selectedConceptos, setSelectedConceptos] = useState<number[]>([])
 
   const { data: emp, isLoading } = useQuery({ queryKey: ['empleado', empId], queryFn: () => getEmpleado(empId) })
   const { data: contratos } = useQuery({ queryKey: ['empleado-contratos', empId], queryFn: () => getContratosEmpleado(empId) })
@@ -60,6 +65,12 @@ export default function EmpleadoDetallePage() {
   const { data: asignaciones } = useQuery({ queryKey: ['empleado-asignaciones', empId], queryFn: () => getAsignacionesTurno(empId) })
   const { data: turnos } = useQuery({ queryKey: ['turnos'], queryFn: getTurnos })
   const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
+  const { data: allConceptos } = useQuery({ queryKey: ['conceptos'], queryFn: getConceptos })
+  const { data: contratoConceptos } = useQuery({
+    queryKey: ['contrato-conceptos', conceptoContratoId],
+    queryFn: () => getConceptosContrato(conceptoContratoId!),
+    enabled: !!conceptoContratoId,
+  })
 
   const contratoMutation = useMutation({
     mutationFn: (data: z.infer<typeof contratoSchema>) => {
@@ -109,6 +120,23 @@ export default function EmpleadoDetallePage() {
       notifications.show({ message: 'Error al eliminar asignación', color: 'red' })
     },
   })
+
+  const conceptosMutation = useMutation({
+    mutationFn: () => setConceptosContrato(conceptoContratoId!, selectedConceptos),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contrato-conceptos', conceptoContratoId] })
+      notifications.show({ message: 'Conceptos actualizados', color: 'green' })
+      closeConceptos()
+    },
+    onError: () => notifications.show({ message: 'Error al guardar conceptos', color: 'red' }),
+  })
+
+  const openConceptosModal = (contratoId: number) => {
+    setConceptoContratoId(contratoId)
+    const current = contratoConceptos?.map(c => c.id) ?? []
+    setSelectedConceptos(current)
+    openConceptos()
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contratoForm = useForm<z.infer<typeof contratoSchema>>({
@@ -174,6 +202,7 @@ export default function EmpleadoDetallePage() {
                   <Table.Th>Inicio</Table.Th>
                   <Table.Th>Fin</Table.Th>
                   <Table.Th>Estado</Table.Th>
+                  <Table.Th>Conceptos</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -192,6 +221,17 @@ export default function EmpleadoDetallePage() {
                       <Badge color={c.activo ? 'green' : 'gray'} variant="light" size="xs">
                         {c.activo ? 'Vigente' : 'Cerrado'}
                       </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        variant="subtle" size="sm" color="blue"
+                        onClick={() => {
+                          setConceptoContratoId(c.id)
+                          openConceptos()
+                        }}
+                      >
+                        <IconSettings size={14} />
+                      </ActionIcon>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -445,6 +485,99 @@ export default function EmpleadoDetallePage() {
           </Stack>
         </form>
       </Modal>
+
+      {/* Modal conceptos de nómina por contrato */}
+      <Modal
+        opened={conceptosOpened}
+        onClose={closeConceptos}
+        title={`Conceptos de nómina — Contrato #${conceptoContratoId}`}
+        size="md"
+      >
+        {conceptoContratoId && (
+          <ConceptosContratoModal
+            contratoId={conceptoContratoId}
+            allConceptos={allConceptos ?? []}
+            contratoConceptos={contratoConceptos ?? []}
+            onSave={(ids) => {
+              setSelectedConceptos(ids)
+              setConceptosContrato(conceptoContratoId, ids).then(() => {
+                qc.invalidateQueries({ queryKey: ['contrato-conceptos', conceptoContratoId] })
+                notifications.show({ message: 'Conceptos actualizados', color: 'green' })
+                closeConceptos()
+              }).catch(() => {
+                notifications.show({ message: 'Error al guardar', color: 'red' })
+              })
+            }}
+          />
+        )}
+      </Modal>
+    </Stack>
+  )
+}
+
+/* ── Componente interno para el modal de conceptos ────────────────────────── */
+function ConceptosContratoModal({
+  contratoId, allConceptos, contratoConceptos, onSave,
+}: {
+  contratoId: number
+  allConceptos: Array<{ id: number; codigo: string; nombre: string; tipo: string; categoria: string; porcentaje: number | null; monto_fijo: number | null }>
+  contratoConceptos: Array<{ id: number }>
+  onSave: (ids: number[]) => void
+}) {
+  const [selected, setSelected] = useState<number[]>(
+    contratoConceptos.map(c => c.id)
+  )
+
+  const toggle = (id: number) => {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const ingresos = allConceptos.filter(c => c.tipo === 'ingreso')
+  const deducciones = allConceptos.filter(c => c.tipo === 'deduccion')
+
+  const renderConcepto = (c: typeof allConceptos[0]) => (
+    <Checkbox
+      key={c.id}
+      label={
+        <Group gap={6}>
+          <Text size="sm">{c.nombre}</Text>
+          <Text size="xs" c="dimmed">({c.codigo})</Text>
+          {c.porcentaje && <Badge size="xs" variant="light">{Number(c.porcentaje)}%</Badge>}
+          {c.monto_fijo && <Badge size="xs" variant="light" color="green">${Number(c.monto_fijo)}</Badge>}
+        </Group>
+      }
+      checked={selected.includes(c.id)}
+      onChange={() => toggle(c.id)}
+      mb={6}
+    />
+  )
+
+  return (
+    <Stack gap="md">
+      <Text size="sm" c="dimmed">
+        Seleccioná los conceptos que aplican a este contrato. Si no se asigna ninguno, se aplican todos al liquidar.
+      </Text>
+
+      {ingresos.length > 0 && (
+        <>
+          <Text fw={600} size="sm" c="green">Ingresos</Text>
+          {ingresos.map(renderConcepto)}
+        </>
+      )}
+
+      {deducciones.length > 0 && (
+        <>
+          <Divider my="xs" />
+          <Text fw={600} size="sm" c="red">Deducciones</Text>
+          {deducciones.map(renderConcepto)}
+        </>
+      )}
+
+      <Group justify="flex-end" mt="sm">
+        <Button size="sm" onClick={() => onSave(selected)}>
+          Guardar ({selected.length} conceptos)
+        </Button>
+      </Group>
     </Stack>
   )
 }

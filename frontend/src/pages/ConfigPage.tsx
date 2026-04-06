@@ -13,9 +13,9 @@ import {
   getDepartamentos, createDepartamento, deleteDepartamento,
   getTurnos, createTurno, deleteTurno,
   getConceptos, createConcepto, deleteConcepto,
-  getCatEventos,
+  getCatEventos, createCatEvento, deleteCatEvento,
 } from '../api/general'
-import type { Sucursal } from '../types'
+import type { Sucursal, CategoriaEvento } from '../types'
 
 // ── Sucursales ────────────────────────────────────────────────────────────────
 function SucursalesTab() {
@@ -199,8 +199,17 @@ function ConceptosTab() {
   const { data, isLoading } = useQuery({ queryKey: ['conceptos'], queryFn: getConceptos })
   const form = useForm<{ codigo: string; nombre: string; tipo: string; categoria: string; porcentaje: number; monto_fijo: number }>()
   const createMutation = useMutation({
-    mutationFn: (d: any) => createConcepto(d),
+    mutationFn: (d: any) => {
+      const payload = { ...d }
+      // Convertir strings vacíos a null para campos numéricos opcionales
+      if (!payload.porcentaje && payload.porcentaje !== 0) delete payload.porcentaje
+      else payload.porcentaje = Number(payload.porcentaje)
+      if (!payload.monto_fijo && payload.monto_fijo !== 0) delete payload.monto_fijo
+      else payload.monto_fijo = Number(payload.monto_fijo)
+      return createConcepto(payload)
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['conceptos'] }); notifications.show({ message: 'Creado', color: 'green' }); close() },
+    onError: () => notifications.show({ message: 'Error al crear concepto', color: 'red' }),
   })
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteConcepto(id),
@@ -274,9 +283,37 @@ function ConceptosTab() {
 
 // ── Categorías de evento ──────────────────────────────────────────────────────
 function CatEventosTab() {
+  const qc = useQueryClient()
+  const [opened, { open, close }] = useDisclosure()
+  const [editTarget, setEditTarget] = useState<CategoriaEvento | null>(null)
   const { data, isLoading } = useQuery({ queryKey: ['cat-eventos'], queryFn: getCatEventos })
+  const form = useForm<{ codigo: string; nombre: string; requiere_aprobacion: string; afecta_nomina: string }>({
+    defaultValues: { requiere_aprobacion: 'true', afecta_nomina: 'false' },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (d: any) => createCatEvento({
+      ...d,
+      requiere_aprobacion: d.requiere_aprobacion === 'true',
+      afecta_nomina: d.afecta_nomina === 'true',
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cat-eventos'] }); notifications.show({ message: 'Categoría creada', color: 'green' }); close() },
+    onError: () => notifications.show({ message: 'Error al crear', color: 'red' }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteCatEvento(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cat-eventos'] }); notifications.show({ message: 'Eliminada', color: 'orange' }) },
+    onError: () => notifications.show({ message: 'No se puede eliminar (tiene eventos asociados)', color: 'red' }),
+  })
+
   return (
     <Stack gap="sm" pt="sm">
+      <Group justify="flex-end">
+        <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => { form.reset({ requiere_aprobacion: 'true', afecta_nomina: 'false' }); open() }}>
+          Nueva categoría
+        </Button>
+      </Group>
       {isLoading ? <Skeleton h={150} /> : (
         <Table striped>
           <Table.Thead>
@@ -285,6 +322,7 @@ function CatEventosTab() {
               <Table.Th>Nombre</Table.Th>
               <Table.Th>Req. aprobación</Table.Th>
               <Table.Th>Afecta nómina</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -294,11 +332,39 @@ function CatEventosTab() {
                 <Table.Td>{c.nombre}</Table.Td>
                 <Table.Td><Badge color={c.requiere_aprobacion ? 'orange' : 'gray'} variant="light" size="xs">{c.requiere_aprobacion ? 'Sí' : 'No'}</Badge></Table.Td>
                 <Table.Td><Badge color={c.afecta_nomina ? 'blue' : 'gray'} variant="light" size="xs">{c.afecta_nomina ? 'Sí' : 'No'}</Badge></Table.Td>
+                <Table.Td>
+                  <ActionIcon color="red" variant="subtle" size="sm" onClick={() => deleteMutation.mutate(c.id)}>
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       )}
+      <Modal opened={opened} onClose={close} title="Nueva categoría de evento" size="sm">
+        <form onSubmit={form.handleSubmit(d => createMutation.mutate(d))}>
+          <Stack gap="sm">
+            <Group grow>
+              <TextInput label="Código *" placeholder="EJ: FALTA, TARDANZA, VACACIONES" {...form.register('codigo', { required: true })} />
+              <TextInput label="Nombre *" placeholder="Ej: Falta injustificada" {...form.register('nombre', { required: true })} />
+            </Group>
+            <Select
+              label="Requiere aprobación"
+              data={[{ value: 'true', label: 'Sí' }, { value: 'false', label: 'No' }]}
+              defaultValue="true"
+              onChange={(v) => form.setValue('requiere_aprobacion', v ?? 'true')}
+            />
+            <Select
+              label="Afecta nómina"
+              data={[{ value: 'true', label: 'Sí (descuenta o suma)' }, { value: 'false', label: 'No' }]}
+              defaultValue="false"
+              onChange={(v) => form.setValue('afecta_nomina', v ?? 'false')}
+            />
+            <Button type="submit" loading={createMutation.isPending}>Crear</Button>
+          </Stack>
+        </form>
+      </Modal>
     </Stack>
   )
 }

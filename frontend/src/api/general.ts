@@ -39,12 +39,20 @@ export const getCatEgresos = async () => (await client.get<CategoriaEgreso[]>('/
 
 // Categorías de evento
 export const getCatEventos = async () => (await client.get<CategoriaEvento[]>('/categorias-evento')).data
+export const createCatEvento = async (d: Partial<CategoriaEvento>) => (await client.post<CategoriaEvento>('/categorias-evento', d)).data
+export const deleteCatEvento = async (id: number) => { await client.delete(`/categorias-evento/${id}`) }
 
 // Conceptos de nómina
 export const getConceptos = async () => (await client.get<ConceptoNomina[]>('/conceptos-nomina')).data
 export const createConcepto = async (d: ConceptoNominaCreate) => (await client.post<ConceptoNomina>('/conceptos-nomina', d)).data
 export const updateConcepto = async (id: number, d: Partial<ConceptoNominaCreate>) => (await client.put<ConceptoNomina>(`/conceptos-nomina/${id}`, d)).data
 export const deleteConcepto = async (id: number) => { await client.delete(`/conceptos-nomina/${id}`) }
+
+// Conceptos por contrato
+export const getConceptosContrato = async (contratoId: number) =>
+  (await client.get<ConceptoNomina[]>(`/contratos/${contratoId}/conceptos`)).data
+export const setConceptosContrato = async (contratoId: number, conceptoIds: number[]) =>
+  (await client.put<ConceptoNomina[]>(`/contratos/${contratoId}/conceptos`, { concepto_ids: conceptoIds })).data
 
 // Encargados
 export const getEncargados = async () => (await client.get<Encargado[]>('/encargados')).data

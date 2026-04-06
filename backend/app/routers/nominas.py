@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     Nomina, NominaDetalle, PeriodoNomina, Contrato,
-    EventoEmpleado, CategoriaEvento, ConceptoNomina, Feriado,
+    EventoEmpleado, CategoriaEvento, ConceptoNomina, ConceptoContrato, Feriado,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import NominaCreate, NominaUpdate, NominaOut, NominaDetalleCreate, NominaDetalleOut
@@ -66,6 +66,20 @@ async def generar_borrador(
     if not contrato:
         raise HTTPException(400, "Empleado no tiene contrato activo")
 
+    # ── Obtener conceptos asignados al contrato ────────────────────────────
+    r_cc = await db.execute(
+        select(ConceptoContrato.concepto_id).where(ConceptoContrato.contrato_id == contrato.id)
+    )
+    conceptos_contrato_ids = set(r_cc.scalars().all())
+    tiene_conceptos = len(conceptos_contrato_ids) > 0
+    # Si tiene conceptos asignados, solo usar esos; sino usar todos (backward compatible)
+
+    def _concepto_permitido(concepto_id: int | None) -> bool:
+        """Devuelve True si el concepto está permitido para este contrato."""
+        if not tiene_conceptos or concepto_id is None:
+            return True  # sin restricción
+        return concepto_id in conceptos_contrato_ids
+
     es_mensual = contrato.tipo_contrato == "mensual"
     salario_base = float(contrato.salario_mensual or 0) if es_mensual else 0
 
@@ -86,13 +100,14 @@ async def generar_borrador(
         r_cs = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
         concepto_sueldo = r_cs.scalars().first()
         c_id = concepto_sueldo.id if concepto_sueldo else 1
-        det_base = NominaDetalle(
-            nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",
-            cantidad=1, monto_unitario=salario_base, monto_total=salario_base,
-            observacion="Sueldo base",
-        )
-        db.add(det_base)
-        detalles.append(det_base)
+        if _concepto_permitido(c_id):
+            det_base = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",
+                cantidad=1, monto_unitario=salario_base, monto_total=salario_base,
+                observacion="Sueldo base",
+            )
+            db.add(det_base)
+            detalles.append(det_base)
 
     # ── Calcular valor de la hora ─────────────────────────────────────────────
     # Mensual: valor_hora = salario / (días_hábiles_período * 8 horas)
@@ -157,7 +172,7 @@ async def generar_borrador(
             else:
                 pct = 100 if fecha_ev in feriados_set else 50
 
-            if pct == 100 and ext100_id:
+            if pct == 100 and ext100_id and _concepto_permitido(ext100_id):
                 monto_unitario = valor_hora * 2.0
                 det = NominaDetalle(
                     nomina_id=nomina.id, concepto_id=ext100_id, tipo="ingreso",
@@ -168,7 +183,7 @@ async def generar_borrador(
                 )
                 db.add(det)
                 detalles.append(det)
-            elif pct == 50 and ext50_id:
+            elif pct == 50 and ext50_id and _concepto_permitido(ext50_id):
                 monto_unitario = valor_hora * 1.5
                 det = NominaDetalle(
                     nomina_id=nomina.id, concepto_id=ext50_id, tipo="ingreso",
@@ -181,7 +196,7 @@ async def generar_borrador(
                 detalles.append(det)
 
         # Descuentos por ausencias no justificadas
-        elif not ev.justificado:
+        elif not ev.justificado and _concepto_permitido(desc_id):
             det_desc = NominaDetalle(
                 nomina_id=nomina.id, concepto_id=desc_id, tipo="deduccion",
                 cantidad=1, monto_unitario=valor_dia, monto_total=valor_dia,
@@ -190,11 +205,44 @@ async def generar_borrador(
             db.add(det_desc)
             detalles.append(det_desc)
 
+    # ── Conceptos automáticos del contrato (% o monto fijo) ────────────────
+    # Conceptos ya procesados arriba (por código)
+    codigos_ya_procesados = {"salario_base", "ausencia_desc", "hora_extra_50", "hora_extra_100",
+                              "SAL_BASE", "DESC_FALTA", "HE_50", "HE_100"}
+    if tiene_conceptos:
+        r_conceptos = await db.execute(
+            select(ConceptoNomina).where(
+                ConceptoNomina.id.in_(conceptos_contrato_ids),
+                ConceptoNomina.activo == True,
+            )
+        )
+        for cn in r_conceptos.scalars().all():
+            if cn.codigo in codigos_ya_procesados:
+                continue
+            if cn.porcentaje and salario_base > 0:
+                monto = salario_base * float(cn.porcentaje) / 100
+                det = NominaDetalle(
+                    nomina_id=nomina.id, concepto_id=cn.id, tipo=cn.tipo,
+                    cantidad=1, monto_unitario=monto, monto_total=monto,
+                    observacion=f"{cn.nombre} ({cn.porcentaje}%)",
+                )
+                db.add(det)
+                detalles.append(det)
+            elif cn.monto_fijo:
+                monto = float(cn.monto_fijo)
+                det = NominaDetalle(
+                    nomina_id=nomina.id, concepto_id=cn.id, tipo=cn.tipo,
+                    cantidad=1, monto_unitario=monto, monto_total=monto,
+                    observacion=cn.nombre,
+                )
+                db.add(det)
+                detalles.append(det)
+
     # Para empleados por hora: sumar horas trabajadas como ingreso base
     if not es_mensual and valor_hora > 0:
-        r_cs = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
-        concepto_sueldo = r_cs.scalars().first()
-        c_id = concepto_sueldo.id if concepto_sueldo else 1
+        r_cs2 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "salario_base"))
+        concepto_sueldo2 = r_cs2.scalars().first()
+        c_id = concepto_sueldo2.id if concepto_sueldo2 else 1
         # El monto base por hora se calcula al recalcular manualmente; aquí se pone 0 como placeholder
         det_base = NominaDetalle(
             nomina_id=nomina.id, concepto_id=c_id, tipo="ingreso",

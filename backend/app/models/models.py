@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Date,
-    ForeignKey, Numeric, Time, Text
+    ForeignKey, Numeric, Time, Text, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -185,6 +185,15 @@ class ConceptoNomina(Base):
     porcentaje  = Column(Numeric(6, 4), nullable=True)
     monto_fijo  = Column(Numeric(12, 2), nullable=True)
     activo      = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+
+class ConceptoContrato(Base):
+    __tablename__ = "conceptos_contrato"
+    __table_args__ = (UniqueConstraint('contrato_id', 'concepto_id', name='uq_contrato_concepto'),)
+    id          = Column(Integer, primary_key=True)
+    contrato_id = Column(Integer, ForeignKey("contratos.id", ondelete="CASCADE"), nullable=False)
+    concepto_id = Column(Integer, ForeignKey("conceptos_nomina.id", ondelete="CASCADE"), nullable=False)
     created_at  = Column(DateTime, default=datetime.utcnow)
 
 

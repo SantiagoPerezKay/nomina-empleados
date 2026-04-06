@@ -415,6 +415,18 @@ class ConceptoNominaOut(BaseSchema):
     activo: bool
 
 
+class ConceptoContratoCreate(BaseSchema):
+    concepto_id: int
+
+class ConceptoContratoOut(BaseSchema):
+    id: int
+    contrato_id: int
+    concepto_id: int
+
+class ConceptosContratoBulk(BaseSchema):
+    concepto_ids: list[int]
+
+
 # ─── PERIODOS NOMINA ───────────────────────────────────────────────────────────
 
 class PeriodoNominaCreate(BaseSchema):
