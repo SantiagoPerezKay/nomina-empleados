@@ -85,7 +85,6 @@ class Turno(Base):
     activo          = Column(Boolean, default=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    bloques         = relationship("BloqueHorario", back_populates="turno", order_by="BloqueHorario.orden")
 
 
 class BloqueHorario(Base):
@@ -95,7 +94,6 @@ class BloqueHorario(Base):
     orden       = Column(Integer, nullable=False, default=1)  # 1=primero, 2=segundo
     hora_inicio = Column(Time, nullable=False)
     hora_fin    = Column(Time, nullable=False)
-    turno       = relationship("Turno", back_populates="bloques")
 
 
 class Feriado(Base):

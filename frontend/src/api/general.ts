@@ -41,10 +41,10 @@ export const getCatEgresos = async () => (await client.get<CategoriaEgreso[]>('/
 export const getCatEventos = async () => (await client.get<CategoriaEvento[]>('/categorias-evento')).data
 
 // Conceptos de nómina
-export const getConceptos = async () => (await client.get<ConceptoNomina[]>('/conceptos')).data
-export const createConcepto = async (d: ConceptoNominaCreate) => (await client.post<ConceptoNomina>('/conceptos', d)).data
-export const updateConcepto = async (id: number, d: Partial<ConceptoNominaCreate>) => (await client.put<ConceptoNomina>(`/conceptos/${id}`, d)).data
-export const deleteConcepto = async (id: number) => { await client.delete(`/conceptos/${id}`) }
+export const getConceptos = async () => (await client.get<ConceptoNomina[]>('/conceptos-nomina')).data
+export const createConcepto = async (d: ConceptoNominaCreate) => (await client.post<ConceptoNomina>('/conceptos-nomina', d)).data
+export const updateConcepto = async (id: number, d: Partial<ConceptoNominaCreate>) => (await client.put<ConceptoNomina>(`/conceptos-nomina/${id}`, d)).data
+export const deleteConcepto = async (id: number) => { await client.delete(`/conceptos-nomina/${id}`) }
 
 // Encargados
 export const getEncargados = async () => (await client.get<Encargado[]>('/encargados')).data
