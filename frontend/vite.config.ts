@@ -7,10 +7,9 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        // Local dev → external URL de EasyPanel (puerto 80)
-        // Dentro de Docker → http://trabajo_calzalindo-api-nomina:80
         target: 'https://trabajo-calzalindo-api-nomina.ldnquj.easypanel.host',
         changeOrigin: true,
+        secure: false,
       },
     },
   },

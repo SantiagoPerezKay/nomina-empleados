@@ -237,7 +237,6 @@ class TurnoOut(BaseSchema):
     hora_salida: time
     tolerancia_min: int
     activo: bool
-    bloques: List[BloqueHorarioOut] = []
 
 class AsignacionTurnoCreate(BaseSchema):
     empleado_id: int
