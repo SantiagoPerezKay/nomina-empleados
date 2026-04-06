@@ -36,10 +36,10 @@ const asignacionSchema = z.object({
 })
 
 const contratoSchema = z.object({
-  tipo_contrato: z.enum(['mensual', 'por_hora']),
-  salario_mensual: z.coerce.number().optional(),
-  tarifa_hora: z.coerce.number().optional(),
-  fecha_inicio: z.string().min(1),
+  tipo_contrato: z.enum(['mensual', 'por_hora'], { required_error: 'Requerido' }),
+  salario_mensual: z.coerce.number().positive().optional(),
+  tarifa_hora: z.coerce.number().positive().optional(),
+  fecha_inicio: z.string().min(1, 'Requerido'),
   periodo_nomina: z.enum(['quincenal', 'mensual']).default('mensual'),
 })
 
@@ -62,21 +62,40 @@ export default function EmpleadoDetallePage() {
   const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
 
   const contratoMutation = useMutation({
-    mutationFn: (data: ContratoCreate) => createContrato({ ...data, empleado_id: empId }),
+    mutationFn: (data: z.infer<typeof contratoSchema>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = { ...data, empleado_id: empId }
+      if (!payload.salario_mensual) delete payload.salario_mensual
+      if (!payload.tarifa_hora) delete payload.tarifa_hora
+      return createContrato(payload)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['empleado-contratos', empId] })
       notifications.show({ message: 'Contrato creado', color: 'green' })
+      contratoForm.reset()
       closeContrato()
+    },
+    onError: () => {
+      notifications.show({ message: 'Error al crear contrato', color: 'red' })
     },
   })
 
   const asignacionMutation = useMutation({
-    mutationFn: (data: AsignacionTurnoCreate) => createAsignacionTurno({ ...data, empleado_id: empId }),
+    mutationFn: (data: AsignacionTurnoCreate) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = { ...data, empleado_id: empId }
+      if (!payload.fecha_hasta) delete payload.fecha_hasta
+      if (payload.dia_semana === null || payload.dia_semana === undefined) delete payload.dia_semana
+      return createAsignacionTurno(payload)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['empleado-asignaciones', empId] })
       notifications.show({ message: 'Horario asignado', color: 'green' })
       asignacionForm.reset()
       closeAsignacion()
+    },
+    onError: () => {
+      notifications.show({ message: 'Error al asignar horario', color: 'red' })
     },
   })
 
@@ -86,10 +105,16 @@ export default function EmpleadoDetallePage() {
       qc.invalidateQueries({ queryKey: ['empleado-asignaciones', empId] })
       notifications.show({ message: 'Asignación eliminada', color: 'orange' })
     },
+    onError: () => {
+      notifications.show({ message: 'Error al eliminar asignación', color: 'red' })
+    },
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contratoForm = useForm<z.infer<typeof contratoSchema>>({ resolver: zodResolver(contratoSchema) as any })
+  const contratoForm = useForm<z.infer<typeof contratoSchema>>({
+    resolver: zodResolver(contratoSchema) as any,
+    defaultValues: { tipo_contrato: 'mensual', periodo_nomina: 'mensual' },
+  })
   const tipoContrato = contratoForm.watch('tipo_contrato')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -377,27 +402,45 @@ export default function EmpleadoDetallePage() {
 
       {/* Modal nuevo contrato */}
       <Modal opened={contratoOpened} onClose={closeContrato} title="Nuevo contrato" size="sm">
-        <form onSubmit={contratoForm.handleSubmit((d) => contratoMutation.mutate(d as unknown as ContratoCreate))}>
+        <form onSubmit={contratoForm.handleSubmit((d) => contratoMutation.mutate(d))}>
           <Stack gap="sm">
             <Select
               label="Tipo de contrato *"
               data={[{ value: 'mensual', label: 'Mensual' }, { value: 'por_hora', label: 'Por hora' }]}
-              {...contratoForm.register('tipo_contrato')}
+              value={tipoContrato ?? 'mensual'}
               onChange={(v) => contratoForm.setValue('tipo_contrato', v as 'mensual' | 'por_hora')}
+              error={contratoForm.formState.errors.tipo_contrato?.message}
             />
             {tipoContrato === 'mensual' && (
-              <TextInput label="Salario mensual *" type="number" {...contratoForm.register('salario_mensual')} />
+              <TextInput
+                label="Salario mensual *"
+                type="number"
+                min={0}
+                {...contratoForm.register('salario_mensual')}
+                error={contratoForm.formState.errors.salario_mensual?.message}
+              />
             )}
             {tipoContrato === 'por_hora' && (
-              <TextInput label="Tarifa por hora *" type="number" {...contratoForm.register('tarifa_hora')} />
+              <TextInput
+                label="Tarifa por hora *"
+                type="number"
+                min={0}
+                {...contratoForm.register('tarifa_hora')}
+                error={contratoForm.formState.errors.tarifa_hora?.message}
+              />
             )}
             <Select
               label="Período nómina"
               data={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }]}
-              defaultValue="mensual"
+              value={contratoForm.watch('periodo_nomina') ?? 'mensual'}
               onChange={(v) => contratoForm.setValue('periodo_nomina', v as 'mensual' | 'quincenal')}
             />
-            <TextInput label="Fecha inicio *" type="date" {...contratoForm.register('fecha_inicio')} />
+            <TextInput
+              label="Fecha inicio *"
+              type="date"
+              {...contratoForm.register('fecha_inicio')}
+              error={contratoForm.formState.errors.fecha_inicio?.message}
+            />
             <Button type="submit" loading={contratoMutation.isPending}>Crear contrato</Button>
           </Stack>
         </form>
