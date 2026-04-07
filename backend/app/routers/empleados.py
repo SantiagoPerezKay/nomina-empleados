@@ -5,13 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
-from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, CategoriaEgreso
+from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, CategoriaEgreso, Sucursal, Departamento
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
     EmpleadoCreate, EmpleadoOut, EmpleadoUpdate,
     EgresoRequest, ReingresoRequest,
     ContratoOut, EventoEmpleadoOut, AsistenciaOut, NominaOut,
 )
+
+
+async def _enrich_empleado(emp: Empleado, db: AsyncSession) -> dict:
+    """Add sucursal_nombre and departamento_nombre to empleado."""
+    data = {c.name: getattr(emp, c.name) for c in emp.__table__.columns}
+    if emp.sucursal_id:
+        suc = await db.get(Sucursal, emp.sucursal_id)
+        data["sucursal_nombre"] = suc.nombre if suc else None
+    if emp.departamento_id:
+        dep = await db.get(Departamento, emp.departamento_id)
+        data["departamento_nombre"] = dep.nombre if dep else None
+    return data
 
 router = APIRouter(prefix="/empleados", tags=["Empleados"])
 
@@ -35,7 +47,8 @@ async def listar(
         q = q.where(Empleado.departamento_id == departamento_id)
     q = q.offset(skip).limit(limit).order_by(Empleado.apellido)
     result = await db.execute(q)
-    return result.scalars().all()
+    empleados = result.scalars().all()
+    return [await _enrich_empleado(e, db) for e in empleados]
 
 
 @router.get("/{id}", response_model=EmpleadoOut)
@@ -43,7 +56,7 @@ async def obtener(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_cur
     emp = await db.get(Empleado, id)
     if not emp:
         raise HTTPException(404, "Empleado no encontrado")
-    return emp
+    return await _enrich_empleado(emp, db)
 
 
 @router.post("", response_model=EmpleadoOut, status_code=201)
@@ -56,7 +69,7 @@ async def crear(
     db.add(emp)
     await db.commit()
     await db.refresh(emp)
-    return emp
+    return await _enrich_empleado(emp, db)
 
 
 @router.put("/{id}", response_model=EmpleadoOut)
@@ -73,7 +86,7 @@ async def actualizar(
         setattr(emp, k, v)
     await db.commit()
     await db.refresh(emp)
-    return emp
+    return await _enrich_empleado(emp, db)
 
 
 @router.post("/{id}/egresar", response_model=EmpleadoOut)

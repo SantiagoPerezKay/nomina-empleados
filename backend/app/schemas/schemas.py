@@ -136,6 +136,8 @@ class EmpleadoOut(BaseSchema):
     activo: bool
     sucursal_id: Optional[int] = None
     departamento_id: Optional[int] = None
+    sucursal_nombre: Optional[str] = None
+    departamento_nombre: Optional[str] = None
 
 class EgresoRequest(BaseSchema):
     fecha_egreso: date

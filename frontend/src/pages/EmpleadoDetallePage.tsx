@@ -244,7 +244,7 @@ export default function EmpleadoDetallePage() {
         <Tabs.Panel value="horarios" pt="sm">
           <Group justify="space-between" mb="sm">
             <Text size="sm" c="dimmed">
-              Asignación de turnos por día. Si no se reporta novedad, el empleado cumplió su horario normalmente.
+              El empleado se considera presente por defecto cada día. Solo se registra novedad (evento) cuando hay ausencia, llegada tarde u horas extras.
             </Text>
             <Button size="xs" leftSection={<IconPlus size={14} />} onClick={openAsignacion}>
               Asignar horario

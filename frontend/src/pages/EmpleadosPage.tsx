@@ -11,10 +11,10 @@ import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { IconSearch, IconPlus, IconEye, IconDoorExit } from '@tabler/icons-react'
-import { getEmpleados, createEmpleado, egresar } from '../api/empleados'
-import { getSucursales, getDepartamentos } from '../api/general'
-import type { EmpleadoCreate, EgresoRequest } from '../types'
+import { IconSearch, IconPlus, IconEye, IconDoorExit, IconEdit } from '@tabler/icons-react'
+import { getEmpleados, createEmpleado, updateEmpleado, egresar } from '../api/empleados'
+import { getSucursales, getDepartamentos, getCatEgresos } from '../api/general'
+import type { EmpleadoCreate, EmpleadoUpdate, EgresoRequest } from '../types'
 
 const createSchema = z.object({
   nombre: z.string().min(1),
@@ -28,9 +28,21 @@ const createSchema = z.object({
   departamento_id: z.coerce.number().optional(),
 })
 
+const editSchema = z.object({
+  nombre: z.string().min(1),
+  apellido: z.string().min(1),
+  nro_vendedor: z.coerce.number().optional(),
+  documento: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  telefono: z.string().optional(),
+  sucursal_id: z.coerce.number().optional(),
+  departamento_id: z.coerce.number().optional(),
+})
+
 const egresoSchema = z.object({
   fecha_egreso: z.string().min(1),
   motivo_egreso: z.string().optional(),
+  categoria_egreso_id: z.coerce.number().min(1, 'Requerido'),
 })
 
 export default function EmpleadosPage() {
@@ -38,6 +50,7 @@ export default function EmpleadosPage() {
   const [search, setSearch] = useState('')
   const [filtroBaja, setFiltroBaja] = useState<string>('true')
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure()
+  const [editTarget, setEditTarget] = useState<number | null>(null)
   const [egresoTarget, setEgresoTarget] = useState<number | null>(null)
 
   const { data: empleados, isLoading } = useQuery({
@@ -46,6 +59,7 @@ export default function EmpleadosPage() {
   })
   const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
   const { data: departamentos } = useQuery({ queryKey: ['departamentos'], queryFn: getDepartamentos })
+  const { data: catEgresos } = useQuery({ queryKey: ['cat-egresos'], queryFn: getCatEgresos })
 
   const createMutation = useMutation({
     mutationFn: (data: EmpleadoCreate) => createEmpleado(data),
@@ -53,8 +67,19 @@ export default function EmpleadosPage() {
       qc.invalidateQueries({ queryKey: ['empleados'] })
       notifications.show({ message: 'Empleado creado', color: 'green' })
       closeCreate()
+      createForm.reset()
     },
     onError: () => notifications.show({ message: 'Error al crear empleado', color: 'red' }),
+  })
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: EmpleadoUpdate }) => updateEmpleado(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleados'] })
+      notifications.show({ message: 'Empleado actualizado', color: 'green' })
+      setEditTarget(null)
+    },
+    onError: () => notifications.show({ message: 'Error al actualizar', color: 'red' }),
   })
 
   const egresoMutation = useMutation({
@@ -69,11 +94,28 @@ export default function EmpleadosPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const createForm = useForm<z.infer<typeof createSchema>>({ resolver: zodResolver(createSchema) as any })
-  const egresoForm = useForm<z.infer<typeof egresoSchema>>({ resolver: zodResolver(egresoSchema) })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editForm = useForm<z.infer<typeof editSchema>>({ resolver: zodResolver(editSchema) as any })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const egresoForm = useForm<z.infer<typeof egresoSchema>>({ resolver: zodResolver(egresoSchema) as any })
 
   const filtered = (empleados ?? []).filter((e) =>
     `${e.nombre} ${e.apellido} ${e.documento ?? ''}`.toLowerCase().includes(search.toLowerCase())
   )
+
+  const openEditModal = (emp: typeof filtered[0]) => {
+    editForm.reset({
+      nombre: emp.nombre,
+      apellido: emp.apellido,
+      nro_vendedor: emp.nro_vendedor ?? undefined,
+      documento: emp.documento ?? '',
+      email: emp.email ?? '',
+      telefono: emp.telefono ?? '',
+      sucursal_id: emp.sucursal_id ?? undefined,
+      departamento_id: emp.departamento_id ?? undefined,
+    })
+    setEditTarget(emp.id)
+  }
 
   return (
     <Stack gap="md">
@@ -147,6 +189,15 @@ export default function EmpleadosPage() {
                           <IconEye size={16} />
                         </ActionIcon>
                       </Tooltip>
+                      <Tooltip label="Editar">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => openEditModal(emp)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      </Tooltip>
                       {emp.activo && (
                         <Tooltip label="Egresar">
                           <ActionIcon
@@ -201,6 +252,51 @@ export default function EmpleadosPage() {
         </form>
       </Modal>
 
+      {/* Modal editar empleado */}
+      <Modal
+        opened={editTarget !== null}
+        onClose={() => setEditTarget(null)}
+        title="Editar empleado"
+        size="md"
+      >
+        <form onSubmit={editForm.handleSubmit((d) => {
+          const payload: EmpleadoUpdate = { ...d }
+          if (!payload.nro_vendedor) delete payload.nro_vendedor
+          if (!payload.email) delete payload.email
+          editMutation.mutate({ id: editTarget!, data: payload })
+        })}>
+          <Stack gap="sm">
+            <Group grow>
+              <TextInput label="Nombre *" {...editForm.register('nombre')} error={editForm.formState.errors.nombre?.message} />
+              <TextInput label="Apellido *" {...editForm.register('apellido')} error={editForm.formState.errors.apellido?.message} />
+            </Group>
+            <Group grow>
+              <TextInput label="Nro vendedor" type="number" {...editForm.register('nro_vendedor')} />
+              <TextInput label="Documento" {...editForm.register('documento')} />
+            </Group>
+            <Group grow>
+              <TextInput label="Email" type="email" {...editForm.register('email')} />
+              <TextInput label="Teléfono" {...editForm.register('telefono')} />
+            </Group>
+            <Select
+              label="Sucursal"
+              data={(sucursales ?? []).map(s => ({ value: String(s.id), label: s.nombre }))}
+              value={editForm.watch('sucursal_id') ? String(editForm.watch('sucursal_id')) : null}
+              onChange={(v) => editForm.setValue('sucursal_id', v ? Number(v) : undefined)}
+              clearable
+            />
+            <Select
+              label="Departamento"
+              data={(departamentos ?? []).map(d => ({ value: String(d.id), label: d.nombre }))}
+              value={editForm.watch('departamento_id') ? String(editForm.watch('departamento_id')) : null}
+              onChange={(v) => editForm.setValue('departamento_id', v ? Number(v) : undefined)}
+              clearable
+            />
+            <Button type="submit" loading={editMutation.isPending}>Guardar cambios</Button>
+          </Stack>
+        </form>
+      </Modal>
+
       {/* Modal egresar */}
       <Modal
         opened={egresoTarget !== null}
@@ -215,6 +311,12 @@ export default function EmpleadosPage() {
               type="date"
               {...egresoForm.register('fecha_egreso')}
               error={egresoForm.formState.errors.fecha_egreso?.message}
+            />
+            <Select
+              label="Categoría de egreso *"
+              data={(catEgresos ?? []).map(c => ({ value: String(c.id), label: `${c.nombre} (${c.tipo})` }))}
+              onChange={(v) => egresoForm.setValue('categoria_egreso_id', v ? Number(v) : 0)}
+              error={egresoForm.formState.errors.categoria_egreso_id?.message}
             />
             <TextInput label="Motivo (opcional)" {...egresoForm.register('motivo_egreso')} />
             <Button type="submit" color="red" loading={egresoMutation.isPending}>

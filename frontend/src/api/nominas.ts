@@ -3,17 +3,17 @@ import type { PeriodoNomina, PeriodoCreate, Nomina, NominaDetalle, NominaDetalle
 
 // Períodos
 export const getPeriodos = async () => {
-  const res = await client.get<PeriodoNomina[]>('/periodos')
+  const res = await client.get<PeriodoNomina[]>('/periodos-nomina')
   return res.data
 }
 
 export const createPeriodo = async (data: PeriodoCreate) => {
-  const res = await client.post<PeriodoNomina>('/periodos', data)
+  const res = await client.post<PeriodoNomina>('/periodos-nomina', data)
   return res.data
 }
 
 export const cerrarPeriodo = async (id: number) => {
-  const res = await client.post<PeriodoNomina>(`/periodos/${id}/cerrar`)
+  const res = await client.post<PeriodoNomina>(`/periodos-nomina/${id}/cerrar`)
   return res.data
 }
 
