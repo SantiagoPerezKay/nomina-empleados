@@ -35,7 +35,7 @@ export const createAsignacionTurno = async (d: AsignacionTurnoCreate) =>
 export const deleteAsignacionTurno = async (id: number) => { await client.delete(`/turnos/asignaciones/${id}`) }
 
 // Categorías de egreso
-export const getCatEgresos = async () => (await client.get<CategoriaEgreso[]>('/cat-egresos')).data
+export const getCatEgresos = async () => (await client.get<CategoriaEgreso[]>('/categorias-egreso')).data
 
 // Categorías de evento
 export const getCatEventos = async () => (await client.get<CategoriaEvento[]>('/categorias-evento')).data

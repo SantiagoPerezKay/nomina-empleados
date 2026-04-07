@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal
+from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal, CategoriaEvento
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -53,18 +53,34 @@ async def obtener_kpis(db: AsyncSession = Depends(get_db), _=Depends(get_current
         select(func.count(EventoEmpleado.id)).where(EventoEmpleado.estado == "sin_revisar")
     )).scalar() or 0
 
-    asistencias_hoy = (await db.execute(
-        select(func.count(Asistencia.id)).where(Asistencia.fecha == hoy)
-    )).scalar() or 0
+    # Ausentes = empleados con evento de ausencia hoy (no justificado)
+    # Buscar categorías que representen ausencias (ej: "ausencia", "falta")
+    r_cat_ausencia = await db.execute(
+        select(CategoriaEvento.id).where(
+            CategoriaEvento.codigo.in_(["ausencia", "falta", "AUS", "FALTA"])
+        )
+    )
+    cat_ausencia_ids = set(r_cat_ausencia.scalars().all())
 
-    # Ausentes = empleados activos que NO registraron asistencia hoy
-    ausentes = max(0, total_emp - asistencias_hoy)
+    if cat_ausencia_ids:
+        ausentes = (await db.execute(
+            select(func.count(func.distinct(EventoEmpleado.empleado_id))).where(
+                func.date(EventoEmpleado.fecha_inicial) == hoy,
+                EventoEmpleado.categoria_evento_id.in_(cat_ausencia_ids),
+                EventoEmpleado.estado != "rechazado",
+            )
+        )).scalar() or 0
+    else:
+        ausentes = 0
+
+    # Presentes = empleados activos - ausentes
+    presentes_hoy = max(0, total_emp - ausentes)
 
     return DashboardKPIs(
         total_empleados_activos=total_emp,
         total_nomina_mes_actual=float(total_nom),
         eventos_pendientes=eventos_pend,
-        asistencias_hoy=asistencias_hoy,
+        asistencias_hoy=presentes_hoy,
         ausentes_hoy=ausentes,
     )
 
