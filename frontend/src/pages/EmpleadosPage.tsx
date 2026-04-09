@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Stack, Title, Group, Button, TextInput, Select,
   Table, Badge, ActionIcon, Text, Modal, Skeleton,
-  Tooltip,
+  Tooltip, Checkbox,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
@@ -26,6 +26,7 @@ const createSchema = z.object({
   telefono: z.string().optional(),
   sucursal_id: z.coerce.number().optional(),
   departamento_id: z.coerce.number().optional(),
+  en_blanco: z.boolean().default(false),
 })
 
 const editSchema = z.object({
@@ -37,6 +38,7 @@ const editSchema = z.object({
   telefono: z.string().optional(),
   sucursal_id: z.coerce.number().optional(),
   departamento_id: z.coerce.number().optional(),
+  en_blanco: z.boolean().default(false),
 })
 
 const egresoSchema = z.object({
@@ -113,6 +115,7 @@ export default function EmpleadosPage() {
       telefono: emp.telefono ?? '',
       sucursal_id: emp.sucursal_id ?? undefined,
       departamento_id: emp.departamento_id ?? undefined,
+      en_blanco: emp.en_blanco ?? false,
     })
     setEditTarget(emp.id)
   }
@@ -174,9 +177,14 @@ export default function EmpleadosPage() {
                   <Table.Td>{emp.departamento_nombre ?? '—'}</Table.Td>
                   <Table.Td>{emp.fecha_ingreso}</Table.Td>
                   <Table.Td>
-                    <Badge color={emp.activo ? 'green' : 'red'} variant="light">
-                      {emp.activo ? 'Activo' : 'Inactivo'}
-                    </Badge>
+                    <Group gap={4}>
+                      <Badge color={emp.activo ? 'green' : 'red'} variant="light">
+                        {emp.activo ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                      {emp.en_blanco && (
+                        <Badge color="gray" variant="light" size="xs">En blanco</Badge>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
@@ -247,6 +255,11 @@ export default function EmpleadosPage() {
               onChange={(v) => createForm.setValue('departamento_id', v ? Number(v) : undefined)}
               clearable
             />
+            <Checkbox
+              label="En blanco (sin aportes jubilatorios ni obra social)"
+              checked={createForm.watch('en_blanco') ?? false}
+              onChange={(e) => createForm.setValue('en_blanco', e.currentTarget.checked)}
+            />
             <Button type="submit" loading={createMutation.isPending}>Crear</Button>
           </Stack>
         </form>
@@ -291,6 +304,11 @@ export default function EmpleadosPage() {
               value={editForm.watch('departamento_id') ? String(editForm.watch('departamento_id')) : null}
               onChange={(v) => editForm.setValue('departamento_id', v ? Number(v) : undefined)}
               clearable
+            />
+            <Checkbox
+              label="En blanco (sin aportes jubilatorios ni obra social)"
+              checked={editForm.watch('en_blanco') ?? false}
+              onChange={(e) => editForm.setValue('en_blanco', e.currentTarget.checked)}
             />
             <Button type="submit" loading={editMutation.isPending}>Guardar cambios</Button>
           </Stack>

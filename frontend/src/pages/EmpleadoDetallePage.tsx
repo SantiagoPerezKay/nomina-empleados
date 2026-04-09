@@ -41,6 +41,7 @@ const contratoSchema = z.object({
   tipo_contrato: z.enum(['mensual', 'por_hora'], { required_error: 'Requerido' }),
   salario_mensual: z.coerce.number().positive().optional(),
   tarifa_hora: z.coerce.number().positive().optional(),
+  hs_semanales: z.coerce.number().min(1).default(48),
   fecha_inicio: z.string().min(1, 'Requerido'),
   periodo_nomina: z.enum(['quincenal', 'mensual']).default('mensual'),
 })
@@ -141,7 +142,7 @@ export default function EmpleadoDetallePage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contratoForm = useForm<z.infer<typeof contratoSchema>>({
     resolver: zodResolver(contratoSchema) as any,
-    defaultValues: { tipo_contrato: 'mensual', periodo_nomina: 'mensual' },
+    defaultValues: { tipo_contrato: 'mensual', periodo_nomina: 'mensual', hs_semanales: 48 },
   })
   const tipoContrato = contratoForm.watch('tipo_contrato')
 
@@ -198,6 +199,7 @@ export default function EmpleadoDetallePage() {
                 <Table.Tr>
                   <Table.Th>Tipo</Table.Th>
                   <Table.Th>Salario / Tarifa</Table.Th>
+                  <Table.Th>Hs/sem</Table.Th>
                   <Table.Th>Período nómina</Table.Th>
                   <Table.Th>Inicio</Table.Th>
                   <Table.Th>Fin</Table.Th>
@@ -214,6 +216,7 @@ export default function EmpleadoDetallePage() {
                         ? `$${c.salario_mensual?.toLocaleString('es-AR')}/mes`
                         : `$${c.tarifa_hora}/h`}
                     </Table.Td>
+                    <Table.Td>{c.hs_semanales ?? '—'}</Table.Td>
                     <Table.Td>{c.periodo_nomina}</Table.Td>
                     <Table.Td>{c.fecha_inicio}</Table.Td>
                     <Table.Td>{c.fecha_fin ?? '—'}</Table.Td>
@@ -469,6 +472,12 @@ export default function EmpleadoDetallePage() {
                 error={contratoForm.formState.errors.tarifa_hora?.message}
               />
             )}
+            <TextInput
+              label="Horas semanales"
+              type="number"
+              min={1}
+              {...contratoForm.register('hs_semanales')}
+            />
             <Select
               label="Período nómina"
               data={[{ value: 'mensual', label: 'Mensual' }, { value: 'quincenal', label: 'Quincenal' }]}

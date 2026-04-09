@@ -53,6 +53,7 @@ class Empleado(Base):
     motivo_egreso       = Column(Text, nullable=True)
     categoria_egreso_id = Column(Integer, ForeignKey("categorias_egreso.id"), nullable=True)
     activo              = Column(Boolean, default=True)
+    en_blanco           = Column(Boolean, default=False)
     sucursal_id         = Column(Integer, ForeignKey("sucursales.id"), nullable=True)
     departamento_id     = Column(Integer, ForeignKey("departamentos.id"), nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow)
@@ -66,6 +67,7 @@ class Contrato(Base):
     tipo_contrato   = Column(String(20), nullable=False)   # mensual | por_hora
     salario_mensual = Column(Numeric(12, 2), nullable=True)
     tarifa_hora     = Column(Numeric(10, 2), nullable=True)
+    hs_semanales    = Column(Integer, nullable=True, default=48)
     periodo_nomina  = Column(String(20), default="mensual") # mensual | quincenal
     fecha_inicio    = Column(Date, nullable=False)
     fecha_fin       = Column(Date, nullable=True)

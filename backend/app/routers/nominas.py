@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import (
-    Nomina, NominaDetalle, PeriodoNomina, Contrato,
+    Nomina, NominaDetalle, PeriodoNomina, Contrato, Empleado,
     EventoEmpleado, CategoriaEvento, ConceptoNomina, ConceptoContrato, Feriado,
 )
 from app.models.usuario import Usuario
@@ -66,6 +66,10 @@ async def generar_borrador(
     if not contrato:
         raise HTTPException(400, "Empleado no tiene contrato activo")
 
+    # Obtener datos del empleado para saber si es en_blanco
+    empleado = await db.get(Empleado, body.empleado_id)
+    es_en_blanco = empleado.en_blanco if empleado else False
+
     # ── Obtener conceptos asignados al contrato ────────────────────────────
     r_cc = await db.execute(
         select(ConceptoContrato.concepto_id).where(ConceptoContrato.contrato_id == contrato.id)
@@ -82,6 +86,7 @@ async def generar_borrador(
 
     es_mensual = contrato.tipo_contrato == "mensual"
     salario_base = float(contrato.salario_mensual or 0) if es_mensual else 0
+    hs_semanales = contrato.hs_semanales or 48
 
     nomina = Nomina(
         empleado_id=body.empleado_id,
@@ -119,9 +124,9 @@ async def generar_borrador(
     )
     dias_habiles = max(dias_habiles, 1)
 
+    hs_por_dia = hs_semanales / 6  # 6 días laborales por semana
     if es_mensual:
-        horas_por_dia = 8
-        valor_hora = float(salario_base) / (dias_habiles * horas_por_dia) if salario_base else 0
+        valor_hora = float(salario_base) / (dias_habiles * hs_por_dia) if salario_base else 0
     else:
         valor_hora = float(contrato.tarifa_hora or 0)
 
@@ -158,7 +163,7 @@ async def generar_borrador(
     concepto_ext100 = r_ext100.scalars().first()
     ext100_id = concepto_ext100.id if concepto_ext100 else None
 
-    valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * 8
+    valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * hs_por_dia
 
     for ev in eventos:
         fecha_ev = ev.fecha_inicial.date() if hasattr(ev.fecha_inicial, 'date') else ev.fecha_inicial
@@ -218,6 +223,9 @@ async def generar_borrador(
         )
         for cn in r_conceptos.scalars().all():
             if cn.codigo in codigos_ya_procesados:
+                continue
+            # Empleados en blanco: omitir aportes sociales/jubilatorios
+            if es_en_blanco and cn.categoria == "aporte_social":
                 continue
             if cn.porcentaje and salario_base > 0:
                 monto = salario_base * float(cn.porcentaje) / 100

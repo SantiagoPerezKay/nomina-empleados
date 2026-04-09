@@ -106,6 +106,7 @@ class EmpleadoCreate(BaseSchema):
     fecha_induccion_fin: Optional[date] = None
     sucursal_id: Optional[int] = None
     departamento_id: Optional[int] = None
+    en_blanco: bool = False
 
 class EmpleadoUpdate(BaseSchema):
     nombre: Optional[str] = None
@@ -118,6 +119,7 @@ class EmpleadoUpdate(BaseSchema):
     fecha_induccion_fin: Optional[date] = None
     sucursal_id: Optional[int] = None
     departamento_id: Optional[int] = None
+    en_blanco: Optional[bool] = None
 
 class EmpleadoOut(BaseSchema):
     id: int
@@ -134,6 +136,7 @@ class EmpleadoOut(BaseSchema):
     motivo_egreso: Optional[str] = None
     categoria_egreso_id: Optional[int] = None
     activo: bool
+    en_blanco: bool = False
     sucursal_id: Optional[int] = None
     departamento_id: Optional[int] = None
     sucursal_nombre: Optional[str] = None
@@ -157,6 +160,7 @@ class ContratoCreate(BaseSchema):
     tipo_contrato: str            # mensual | por_hora
     salario_mensual: Optional[Decimal] = None
     tarifa_hora: Optional[Decimal] = None
+    hs_semanales: Optional[int] = 48
     periodo_nomina: str = "mensual"
     fecha_inicio: date
     observacion: Optional[str] = None
@@ -164,6 +168,7 @@ class ContratoCreate(BaseSchema):
 class ContratoUpdate(BaseSchema):
     salario_mensual: Optional[Decimal] = None
     tarifa_hora: Optional[Decimal] = None
+    hs_semanales: Optional[int] = None
     periodo_nomina: Optional[str] = None
     observacion: Optional[str] = None
 
@@ -173,6 +178,7 @@ class ContratoOut(BaseSchema):
     tipo_contrato: str
     salario_mensual: Optional[Decimal] = None
     tarifa_hora: Optional[Decimal] = None
+    hs_semanales: Optional[int] = None
     periodo_nomina: str
     fecha_inicio: date
     fecha_fin: Optional[date] = None

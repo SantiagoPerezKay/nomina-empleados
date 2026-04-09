@@ -54,6 +54,7 @@ export interface Empleado {
   motivo_egreso: string | null
   categoria_egreso_id: number | null
   activo: boolean
+  en_blanco: boolean
   sucursal_id: number | null; sucursal_nombre?: string | null
   departamento_id: number | null; departamento_nombre?: string | null
 }
@@ -63,6 +64,7 @@ export interface EmpleadoCreate {
   nro_vendedor?: number; documento?: string; email?: string; telefono?: string
   fecha_nacimiento?: string; fecha_induccion_fin?: string
   sucursal_id?: number; departamento_id?: number
+  en_blanco?: boolean
 }
 export interface EmpleadoUpdate extends Partial<EmpleadoCreate> {}
 export interface EgresoRequest {
@@ -74,6 +76,7 @@ export interface Contrato {
   id: number; empleado_id: number
   tipo_contrato: 'mensual' | 'por_hora'
   salario_mensual: number | null; tarifa_hora: number | null
+  hs_semanales: number | null
   periodo_nomina: 'quincenal' | 'mensual'
   fecha_inicio: string; fecha_fin: string | null
   activo: boolean; observacion: string | null
@@ -82,6 +85,7 @@ export interface ContratoCreate {
   empleado_id: number
   tipo_contrato: 'mensual' | 'por_hora'
   salario_mensual?: number; tarifa_hora?: number
+  hs_semanales?: number
   periodo_nomina?: 'quincenal' | 'mensual'
   fecha_inicio: string; observacion?: string
 }
