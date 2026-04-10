@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { IconArrowLeft, IconPlus, IconTrash, IconSettings } from '@tabler/icons-react'
+import { format } from 'date-fns'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
   getAsistenciasEmpleado, getNominasEmpleado, createContrato,
@@ -19,7 +20,10 @@ import {
 import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato } from '../api/general'
 import type { ContratoCreate, AsignacionTurnoCreate } from '../types'
 
+const hoy = () => format(new Date(), 'yyyy-MM-dd')
+
 const DIAS_SEMANA = [
+  { value: '0', label: 'Lunes a Sábado' },
   { value: '1', label: 'Lunes' },
   { value: '2', label: 'Martes' },
   { value: '3', label: 'Miércoles' },
@@ -97,7 +101,8 @@ export default function EmpleadoDetallePage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: any = { ...data, empleado_id: empId }
       if (!payload.fecha_hasta) delete payload.fecha_hasta
-      if (payload.dia_semana === null || payload.dia_semana === undefined) delete payload.dia_semana
+      // dia_semana 0 = Lunes a Sábado = null en backend (todos los días)
+      if (payload.dia_semana === 0 || payload.dia_semana === null || payload.dia_semana === undefined) delete payload.dia_semana
       return createAsignacionTurno(payload)
     },
     onSuccess: () => {
@@ -142,12 +147,15 @@ export default function EmpleadoDetallePage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contratoForm = useForm<z.infer<typeof contratoSchema>>({
     resolver: zodResolver(contratoSchema) as any,
-    defaultValues: { tipo_contrato: 'mensual', periodo_nomina: 'mensual', hs_semanales: 48 },
+    defaultValues: { tipo_contrato: 'mensual', periodo_nomina: 'mensual', hs_semanales: 48, fecha_inicio: hoy() },
   })
   const tipoContrato = contratoForm.watch('tipo_contrato')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const asignacionForm = useForm<z.infer<typeof asignacionSchema>>({ resolver: zodResolver(asignacionSchema) as any })
+  const asignacionForm = useForm<z.infer<typeof asignacionSchema>>({
+    resolver: zodResolver(asignacionSchema) as any,
+    defaultValues: { fecha_desde: hoy(), dia_semana: 0 },
+  })
 
   if (isLoading) return <Skeleton h={400} />
 
@@ -213,7 +221,12 @@ export default function EmpleadoDetallePage() {
                     <Table.Td>{c.tipo_contrato}</Table.Td>
                     <Table.Td>
                       {c.tipo_contrato === 'mensual'
-                        ? `$${c.salario_mensual?.toLocaleString('es-AR')}/mes`
+                        ? <>
+                            ${c.salario_mensual?.toLocaleString('es-AR')}/mes
+                            {c.tarifa_hora && (
+                              <Text size="xs" c="dimmed">${Number(c.tarifa_hora).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/h</Text>
+                            )}
+                          </>
                         : `$${c.tarifa_hora}/h`}
                     </Table.Td>
                     <Table.Td>{c.hs_semanales ?? '—'}</Table.Td>
@@ -278,7 +291,7 @@ export default function EmpleadoDetallePage() {
                   const sucursal = sucursales?.find(s => s.id === a.sucursal_id)
                   const diaNombre = a.dia_semana
                     ? DIAS_SEMANA.find(d => d.value === String(a.dia_semana))?.label
-                    : 'Todos los días'
+                    : 'Lunes a Sábado'
                   return (
                     <Table.Tr key={a.id}>
                       <Table.Td fw={500}>
@@ -429,11 +442,10 @@ export default function EmpleadoDetallePage() {
               error={asignacionForm.formState.errors.sucursal_id?.message}
             />
             <Select
-              label="Día de semana"
-              placeholder="Todos los días"
-              clearable
+              label="Días"
               data={DIAS_SEMANA}
-              onChange={(v) => asignacionForm.setValue('dia_semana', v ? Number(v) : null)}
+              value={String(asignacionForm.watch('dia_semana') ?? 0)}
+              onChange={(v) => asignacionForm.setValue('dia_semana', v ? Number(v) : 0)}
             />
             <TextInput label="Fecha desde *" type="date" {...asignacionForm.register('fecha_desde')}
               error={asignacionForm.formState.errors.fecha_desde?.message} />

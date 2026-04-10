@@ -15,7 +15,6 @@ import EmpleadosPage from './pages/EmpleadosPage'
 import EmpleadoDetallePage from './pages/EmpleadoDetallePage'
 import EventosPage from './pages/EventosPage'
 import NominasPage from './pages/NominasPage'
-import AsistenciasPage from './pages/AsistenciasPage'
 import ReportesPage from './pages/ReportesPage'
 import ConfigPage from './pages/ConfigPage'
 
@@ -44,7 +43,6 @@ export default function App() {
                 <Route path="empleados/:id" element={<EmpleadoDetallePage />} />
                 <Route path="eventos" element={<EventosPage />} />
                 <Route path="nominas" element={<NominasPage />} />
-                <Route path="asistencias" element={<AsistenciasPage />} />
                 <Route path="reportes" element={<ReportesPage />} />
                 <Route path="config" element={<ConfigPage />} />
               </Route>

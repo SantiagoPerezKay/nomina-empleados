@@ -19,6 +19,10 @@ class GenerarBorradorReq(BaseModel):
     periodo_id: int
 
 
+class CalcularMasivoReq(BaseModel):
+    periodo_id: int
+
+
 router = APIRouter(prefix="/nominas", tags=["Nóminas"])
 
 
@@ -135,9 +139,15 @@ async def generar_borrador(
 
     # ── Buscar categoría de horas extras ─────────────────────────────────────
     r_cat_extra = await db.execute(
-        select(CategoriaEvento).where(CategoriaEvento.codigo == "horas_extras")
+        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["horas_extras", "HE_EXTRA"]))
     )
     cat_extra = r_cat_extra.scalars().first()
+
+    # ── Buscar categoría de falta injustificada ──────────────────────────────
+    r_cat_falta = await db.execute(
+        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["FALTA_INJ", "falta_inj"]))
+    )
+    cat_falta_inj = r_cat_falta.scalars().first()
 
     # ── Eventos aprobados del período ─────────────────────────────────────────
     r_ev = await db.execute(
@@ -151,9 +161,9 @@ async def generar_borrador(
     eventos = r_ev.scalars().all()
 
     # Conceptos de deducciones y horas extras
-    r_desc = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "ausencia_desc"))
+    r_desc = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo.in_(["ausencia_desc", "DESC_FALTA"])))
     concepto_desc = r_desc.scalars().first()
-    desc_id = concepto_desc.id if concepto_desc else 2
+    desc_id = concepto_desc.id if concepto_desc else None
 
     r_ext50 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "hora_extra_50"))
     concepto_ext50 = r_ext50.scalars().first()
@@ -200,12 +210,13 @@ async def generar_borrador(
                 db.add(det)
                 detalles.append(det)
 
-        # Descuentos por ausencias no justificadas
-        elif not ev.justificado and _concepto_permitido(desc_id):
+        # Descuento solo por falta injustificada aprobada
+        elif (cat_falta_inj and ev.categoria_evento_id == cat_falta_inj.id
+              and desc_id and _concepto_permitido(desc_id)):
             det_desc = NominaDetalle(
                 nomina_id=nomina.id, concepto_id=desc_id, tipo="deduccion",
                 cantidad=1, monto_unitario=valor_dia, monto_total=valor_dia,
-                evento_id=ev.id, observacion="Descuento por evento no justificado",
+                evento_id=ev.id, observacion="Descuento por falta injustificada",
             )
             db.add(det_desc)
             detalles.append(det_desc)
@@ -224,8 +235,8 @@ async def generar_borrador(
         for cn in r_conceptos.scalars().all():
             if cn.codigo in codigos_ya_procesados:
                 continue
-            # Empleados en blanco: omitir aportes sociales/jubilatorios
-            if es_en_blanco and cn.categoria == "aporte_social":
+            # Empleados en negro (en_blanco=false): omitir aportes sociales/jubilatorios
+            if not es_en_blanco and cn.categoria == "aporte_social":
                 continue
             if cn.porcentaje and salario_base > 0:
                 monto = salario_base * float(cn.porcentaje) / 100
@@ -271,6 +282,59 @@ async def generar_borrador(
     return nomina
 
 
+async def _enrich_nomina(nomina: Nomina, db: AsyncSession) -> dict:
+    """Agrega empleado_nombre al dict de la nómina."""
+    data = {c.name: getattr(nomina, c.name) for c in nomina.__table__.columns}
+    emp = await db.get(Empleado, nomina.empleado_id)
+    data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}" if emp else None
+    return data
+
+
+@router.post("/calcular", status_code=201)
+async def calcular_masivo(
+    body: CalcularMasivoReq,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    """Genera borradores de nómina para TODOS los empleados activos con contrato vigente."""
+    periodo = await db.get(PeriodoNomina, body.periodo_id)
+    if not periodo:
+        raise HTTPException(404, "Período no encontrado")
+    if periodo.cerrado:
+        raise HTTPException(400, "No se puede calcular en un período cerrado")
+
+    # Obtener empleados activos con contrato activo
+    r_contratos = await db.execute(
+        select(Contrato).where(Contrato.activo == True)
+    )
+    contratos = r_contratos.scalars().all()
+    if not contratos:
+        raise HTTPException(400, "No hay empleados con contratos activos")
+
+    # Verificar qué empleados ya tienen nómina en este período
+    r_existentes = await db.execute(
+        select(Nomina.empleado_id).where(Nomina.periodo_id == body.periodo_id)
+    )
+    ya_calculados = set(r_existentes.scalars().all())
+
+    resultados = []
+    for contrato in contratos:
+        # Verificar que el empleado esté activo
+        empleado = await db.get(Empleado, contrato.empleado_id)
+        if not empleado or not empleado.activo:
+            continue
+        # Saltar si ya tiene nómina en este período
+        if contrato.empleado_id in ya_calculados:
+            continue
+
+        # Reutilizar la lógica de generar_borrador
+        req = GenerarBorradorReq(empleado_id=contrato.empleado_id, periodo_id=body.periodo_id)
+        nomina = await generar_borrador(req, db, current_user)
+        resultados.append(await _enrich_nomina(nomina, db))
+
+    return resultados
+
+
 @router.get("", response_model=list[NominaOut])
 async def listar(
     periodo_id: int | None = None,
@@ -287,7 +351,8 @@ async def listar(
         q = q.where(Nomina.empleado_id == empleado_id)
     q = q.offset(skip).limit(limit)
     result = await db.execute(q)
-    return result.scalars().all()
+    nominas = result.scalars().all()
+    return [await _enrich_nomina(n, db) for n in nominas]
 
 
 @router.get("/{id}", response_model=NominaOut)
@@ -295,7 +360,7 @@ async def obtener(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_cur
     n = await db.get(Nomina, id)
     if not n:
         raise HTTPException(404, "Nómina no encontrada")
-    return n
+    return await _enrich_nomina(n, db)
 
 
 @router.post("", response_model=NominaOut, status_code=201)
@@ -379,7 +444,14 @@ async def listar_detalles(id: int, db: AsyncSession = Depends(get_db), _=Depends
     if not n:
         raise HTTPException(404, "Nómina no encontrada")
     r = await db.execute(select(NominaDetalle).where(NominaDetalle.nomina_id == id))
-    return r.scalars().all()
+    detalles = r.scalars().all()
+    result = []
+    for d in detalles:
+        data = {c.name: getattr(d, c.name) for c in d.__table__.columns}
+        concepto = await db.get(ConceptoNomina, d.concepto_id) if d.concepto_id else None
+        data["concepto_nombre"] = concepto.nombre if concepto else None
+        result.append(data)
+    return result
 
 
 @router.post("/{id}/detalles", response_model=NominaDetalleOut, status_code=201)

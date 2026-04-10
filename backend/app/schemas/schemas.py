@@ -473,6 +473,7 @@ class NominaDetalleOut(BaseSchema):
     monto_total: Decimal
     evento_id: Optional[int] = None
     observacion: Optional[str] = None
+    concepto_nombre: Optional[str] = None
 
 class NominaCreate(BaseSchema):
     periodo_id: int
@@ -496,4 +497,5 @@ class NominaOut(BaseSchema):
     total_deducciones: Optional[Decimal] = None
     neto_a_pagar: Optional[Decimal] = None
     observacion: Optional[str] = None
+    empleado_nombre: Optional[str] = None
     created_at: Optional[datetime] = None

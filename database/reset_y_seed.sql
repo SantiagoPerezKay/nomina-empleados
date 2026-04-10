@@ -78,8 +78,8 @@ INSERT INTO empleados (nombre, apellido, documento, email, telefono, fecha_ingre
 
 -- ── 9. CONTRATOS ─────────────────────────────────────────────────────────
 INSERT INTO contratos (empleado_id, tipo_contrato, salario_mensual, tarifa_hora, hs_semanales, periodo_nomina, fecha_inicio, activo) VALUES
-  (1, 'mensual', 800000, NULL, 48, 'mensual', '2025-04-06', true),
-  (2, 'mensual', 900000, NULL, 48, 'mensual', '2023-05-06', true),
+  (1, 'mensual', 800000, 3849.21, 48, 'mensual', '2025-04-06', true),
+  (2, 'mensual', 900000, 4330.35, 48, 'mensual', '2023-05-06', true),
   (3, 'por_hora', NULL, 5000, 36, 'quincenal', '2023-05-06', true);
 
 -- ── 10. ASIGNACIONES DE TURNO ────────────────────────────────────────────

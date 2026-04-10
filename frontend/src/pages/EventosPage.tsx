@@ -15,6 +15,7 @@ import { getEventos, createEvento, aprobarEvento, rechazarEvento, getHistorialEv
 import { getCatEventos, getSucursales } from '../api/general'
 import { getEmpleados } from '../api/empleados'
 import type { EventoCreate } from '../types'
+import { format } from 'date-fns'
 
 const createSchema = z.object({
   empleado_id: z.coerce.number().min(1, 'Requerido'),
@@ -74,7 +75,10 @@ export default function EventosPage() {
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const createForm = useForm<z.infer<typeof createSchema>>({ resolver: zodResolver(createSchema) as any })
+  const createForm = useForm<z.infer<typeof createSchema>>({
+    resolver: zodResolver(createSchema) as any,
+    defaultValues: { fecha_inicial: format(new Date(), "yyyy-MM-dd'T'HH:mm") },
+  })
   const rechazarForm = useForm<z.infer<typeof rechazarSchema>>({ resolver: zodResolver(rechazarSchema) })
 
   const estadoColor = (e: string) =>

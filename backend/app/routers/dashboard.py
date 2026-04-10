@@ -53,21 +53,20 @@ async def obtener_kpis(db: AsyncSession = Depends(get_db), _=Depends(get_current
         select(func.count(EventoEmpleado.id)).where(EventoEmpleado.estado == "sin_revisar")
     )).scalar() or 0
 
-    # Ausentes = empleados con evento de ausencia hoy (no justificado)
-    # Buscar categorías que representen ausencias (ej: "ausencia", "falta")
-    r_cat_ausencia = await db.execute(
+    # Ausentes = empleados con evento de falta injustificada aprobado hoy
+    r_cat_falta = await db.execute(
         select(CategoriaEvento.id).where(
-            CategoriaEvento.codigo.in_(["ausencia", "falta", "AUS", "FALTA"])
+            CategoriaEvento.codigo.in_(["FALTA_INJ", "falta_inj", "ausencia", "falta"])
         )
     )
-    cat_ausencia_ids = set(r_cat_ausencia.scalars().all())
+    cat_falta_ids = set(r_cat_falta.scalars().all())
 
-    if cat_ausencia_ids:
+    if cat_falta_ids:
         ausentes = (await db.execute(
             select(func.count(func.distinct(EventoEmpleado.empleado_id))).where(
                 func.date(EventoEmpleado.fecha_inicial) == hoy,
-                EventoEmpleado.categoria_evento_id.in_(cat_ausencia_ids),
-                EventoEmpleado.estado != "rechazado",
+                EventoEmpleado.categoria_evento_id.in_(cat_falta_ids),
+                EventoEmpleado.estado == "aprobado",
             )
         )).scalar() or 0
     else:

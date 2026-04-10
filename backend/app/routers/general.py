@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -218,7 +219,12 @@ async def obtener_contrato(id: int, db: AsyncSession = Depends(get_db), _=Depend
 @contratos_router.post("", response_model=ContratoOut, status_code=201)
 async def crear_contrato(body: ContratoCreate, db: AsyncSession = Depends(get_db),
                           _=Depends(require_roles("superadmin", "admin", "rrhh", "liquidador"))):
-    c = Contrato(**body.model_dump())
+    data = body.model_dump()
+    # Calcular tarifa_hora automáticamente para contratos mensuales
+    if data.get("tipo_contrato") == "mensual" and data.get("salario_mensual") and data.get("hs_semanales"):
+        hs_mes = data["hs_semanales"] * Decimal("4.33")
+        data["tarifa_hora"] = round(data["salario_mensual"] / hs_mes, 2)
+    c = Contrato(**data)
     db.add(c); await db.commit(); await db.refresh(c); return c
 
 @contratos_router.put("/{id}", response_model=ContratoOut)
@@ -227,6 +233,10 @@ async def actualizar_contrato(id: int, body: ContratoUpdate, db: AsyncSession = 
     c = await db.get(Contrato, id)
     if not c: raise HTTPException(404, "Contrato no encontrado")
     for k, v in body.model_dump(exclude_unset=True).items(): setattr(c, k, v)
+    # Recalcular tarifa_hora si cambió salario o hs_semanales
+    if c.tipo_contrato == "mensual" and c.salario_mensual and c.hs_semanales:
+        hs_mes = c.hs_semanales * Decimal("4.33")
+        c.tarifa_hora = round(c.salario_mensual / hs_mes, 2)
     await db.commit(); await db.refresh(c); return c
 
 @contratos_router.post("/{id}/cerrar", response_model=ContratoOut)

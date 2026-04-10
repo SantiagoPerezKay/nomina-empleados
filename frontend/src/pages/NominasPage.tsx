@@ -16,6 +16,7 @@ import {
   getDetallesNomina, cerrarPeriodo,
 } from '../api/nominas'
 import type { PeriodoCreate } from '../types'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 
 const periodoSchema = z.object({
   tipo: z.enum(['mensual', 'quincenal']),
@@ -74,7 +75,14 @@ export default function NominasPage() {
     },
   })
 
-  const periodoForm = useForm<z.infer<typeof periodoSchema>>({ resolver: zodResolver(periodoSchema) })
+  const periodoForm = useForm<z.infer<typeof periodoSchema>>({
+    resolver: zodResolver(periodoSchema),
+    defaultValues: {
+      tipo: 'mensual',
+      fecha_inicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+      fecha_fin: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+    },
+  })
 
   const periodoActual = periodos?.find(p => p.id === selectedPeriodo)
   const totalNeto = (nominas ?? []).reduce((sum, n) => sum + n.neto_a_pagar, 0)

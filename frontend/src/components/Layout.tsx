@@ -6,7 +6,7 @@ import {
 import { useDisclosure } from '@mantine/hooks'
 import {
   IconDashboard, IconUsers, IconCalendarEvent,
-  IconCurrencyDollar, IconClockHour4, IconChartBar,
+  IconCurrencyDollar, IconChartBar,
   IconSettings, IconLogout, IconChevronDown,
 } from '@tabler/icons-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -16,7 +16,6 @@ const navItems = [
   { label: 'Empleados', icon: IconUsers, to: '/empleados' },
   { label: 'Eventos', icon: IconCalendarEvent, to: '/eventos' },
   { label: 'Nóminas', icon: IconCurrencyDollar, to: '/nominas' },
-  { label: 'Asistencias', icon: IconClockHour4, to: '/asistencias' },
   { label: 'Reportes', icon: IconChartBar, to: '/reportes' },
   { label: 'Configuración', icon: IconSettings, to: '/config' },
 ]
