@@ -18,7 +18,7 @@ import {
   getAsistenciasEmpleado, getNominasEmpleado, createContrato,
 } from '../api/empleados'
 import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato } from '../api/general'
-import type { ContratoCreate, AsignacionTurnoCreate } from '../types'
+import type { AsignacionTurnoCreate } from '../types'
 
 const hoy = () => format(new Date(), 'yyyy-MM-dd')
 
@@ -42,7 +42,7 @@ const asignacionSchema = z.object({
 })
 
 const contratoSchema = z.object({
-  tipo_contrato: z.enum(['mensual', 'por_hora'], { required_error: 'Requerido' }),
+  tipo_contrato: z.enum(['mensual', 'por_hora'], { message: 'Requerido' }),
   salario_mensual: z.coerce.number().positive().optional(),
   tarifa_hora: z.coerce.number().positive().optional(),
   hs_semanales: z.coerce.number().min(1).default(48),
@@ -60,7 +60,7 @@ export default function EmpleadoDetallePage() {
   const [asignacionOpened, { open: openAsignacion, close: closeAsignacion }] = useDisclosure()
   const [conceptosOpened, { open: openConceptos, close: closeConceptos }] = useDisclosure()
   const [conceptoContratoId, setConceptoContratoId] = useState<number | null>(null)
-  const [selectedConceptos, setSelectedConceptos] = useState<number[]>([])
+  const [, setSelectedConceptos] = useState<number[]>([])
 
   const { data: emp, isLoading } = useQuery({ queryKey: ['empleado', empId], queryFn: () => getEmpleado(empId) })
   const { data: contratos } = useQuery({ queryKey: ['empleado-contratos', empId], queryFn: () => getContratosEmpleado(empId) })
@@ -127,22 +127,7 @@ export default function EmpleadoDetallePage() {
     },
   })
 
-  const conceptosMutation = useMutation({
-    mutationFn: () => setConceptosContrato(conceptoContratoId!, selectedConceptos),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contrato-conceptos', conceptoContratoId] })
-      notifications.show({ message: 'Conceptos actualizados', color: 'green' })
-      closeConceptos()
-    },
-    onError: () => notifications.show({ message: 'Error al guardar conceptos', color: 'red' }),
-  })
-
-  const openConceptosModal = (contratoId: number) => {
-    setConceptoContratoId(contratoId)
-    const current = contratoConceptos?.map(c => c.id) ?? []
-    setSelectedConceptos(current)
-    openConceptos()
-  }
+  // conceptosMutation y openConceptosModal se usan dentro del modal directamente
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contratoForm = useForm<z.infer<typeof contratoSchema>>({
@@ -538,7 +523,7 @@ export default function EmpleadoDetallePage() {
 
 /* ── Componente interno para el modal de conceptos ────────────────────────── */
 function ConceptosContratoModal({
-  contratoId, allConceptos, contratoConceptos, onSave,
+  allConceptos, contratoConceptos, onSave,
 }: {
   contratoId: number
   allConceptos: Array<{ id: number; codigo: string; nombre: string; tipo: string; categoria: string; porcentaje: number | null; monto_fijo: number | null }>

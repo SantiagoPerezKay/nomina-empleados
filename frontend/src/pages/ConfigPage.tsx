@@ -285,7 +285,7 @@ function ConceptosTab() {
 function CatEventosTab() {
   const qc = useQueryClient()
   const [opened, { open, close }] = useDisclosure()
-  const [editTarget, setEditTarget] = useState<CategoriaEvento | null>(null)
+  const [_editTarget, _setEditTarget] = useState<CategoriaEvento | null>(null)
   const { data, isLoading } = useQuery({ queryKey: ['cat-eventos'], queryFn: getCatEventos })
   const form = useForm<{ codigo: string; nombre: string; requiere_aprobacion: string; afecta_nomina: string }>({
     defaultValues: { requiere_aprobacion: 'true', afecta_nomina: 'false' },
