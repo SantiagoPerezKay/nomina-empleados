@@ -35,27 +35,41 @@ export default function LoginPage() {
   }
 
   return (
-    <Center h="100vh" bg="gray.0">
-      <Paper shadow="md" p="xl" w={360} radius="md">
-        <Stack gap="md">
+    <Center h="100vh" style={{ background: 'var(--mantine-color-body)' }}>
+      <Paper shadow="lg" p={40} w={400} radius="lg" withBorder>
+        <Stack gap="lg">
           <Box ta="center">
-            <Title order={2}>Nómina</Title>
-            <Text c="dimmed" size="sm">Calzalindo</Text>
+            <Box
+              mx="auto" mb="sm"
+              style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: 'linear-gradient(135deg, var(--mantine-color-indigo-6), var(--mantine-color-blue-5))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Text fw={800} size="xl" c="white">N</Text>
+            </Box>
+            <Title order={2} mb={4}>Nómina</Title>
+            <Text c="dimmed" size="sm">Calzalindo — Gestión de personal</Text>
           </Box>
           <form onSubmit={handleSubmit(onSubmit)}>
-            <Stack gap="sm">
+            <Stack gap="md">
               <TextInput
                 label="Usuario"
+                placeholder="correo@empresa.com"
+                size="md"
                 {...register('username')}
                 error={errors.username?.message}
               />
               <PasswordInput
                 label="Contraseña"
+                placeholder="Tu contraseña"
+                size="md"
                 {...register('password')}
                 error={errors.password?.message}
               />
-              {error && <Text c="red" size="sm">{error}</Text>}
-              <Button type="submit" loading={isSubmitting} fullWidth mt="xs">
+              {error && <Text c="red" size="sm" ta="center">{error}</Text>}
+              <Button type="submit" loading={isSubmitting} fullWidth size="md" mt="xs">
                 Ingresar
               </Button>
             </Stack>

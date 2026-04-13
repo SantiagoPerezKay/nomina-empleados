@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { MantineProvider } from '@mantine/core'
+import { MantineProvider, ColorSchemeScript } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@mantine/core/styles.css'
@@ -17,15 +17,20 @@ import EventosPage from './pages/EventosPage'
 import NominasPage from './pages/NominasPage'
 import ReportesPage from './pages/ReportesPage'
 import ConfigPage from './pages/ConfigPage'
+import { theme } from './theme'
+import { useColorSchemeStore } from './stores/colorScheme'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
 })
 
 export default function App() {
+  const colorScheme = useColorSchemeStore((s) => s.colorScheme)
+
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>
+      <ColorSchemeScript defaultColorScheme={colorScheme} />
+      <MantineProvider theme={theme} defaultColorScheme={colorScheme}>
         <Notifications position="top-right" />
         <AuthProvider>
           <BrowserRouter>
