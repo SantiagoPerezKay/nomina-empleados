@@ -77,7 +77,10 @@ export default function EventosPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const createForm = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema) as any,
-    defaultValues: { fecha_inicial: format(new Date(), "yyyy-MM-dd'T'HH:mm") },
+    defaultValues: {
+      fecha_inicial: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+      fecha_final: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+    },
   })
   const rechazarForm = useForm<z.infer<typeof rechazarSchema>>({ resolver: zodResolver(rechazarSchema) })
 
@@ -175,7 +178,14 @@ export default function EventosPage() {
 
       {/* Modal nuevo evento */}
       <Modal opened={createOpened} onClose={closeCreate} title="Nuevo evento" size="md">
-        <form onSubmit={createForm.handleSubmit((d) => createMutation.mutate(d as unknown as EventoCreate))}>
+        <form onSubmit={createForm.handleSubmit((d) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const payload: any = { ...d }
+          if (!payload.fecha_final) delete payload.fecha_final
+          if (!payload.sucursal_id) delete payload.sucursal_id
+          if (!payload.observacion) delete payload.observacion
+          createMutation.mutate(payload as EventoCreate)
+        })}>
           <Stack gap="sm">
             <Select
               label="Empleado *"
