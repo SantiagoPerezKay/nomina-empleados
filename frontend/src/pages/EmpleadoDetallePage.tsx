@@ -145,24 +145,30 @@ export default function EmpleadoDetallePage() {
   // Calcular antigüedad y vacaciones según régimen argentino (LCT art. 150)
   const calcAntiguedad = () => {
     if (!emp?.fecha_ingreso) return { texto: '—', diasVacaciones: 0 }
-    const ingreso = new Date(emp.fecha_ingreso)
-    const hoy = new Date()
-    const diffMs = hoy.getTime() - ingreso.getTime()
+    const ingreso = new Date(emp.fecha_ingreso + 'T00:00:00')
+    const ahora = new Date()
+
+    // Calcular años y meses exactos por calendario
+    let anios = ahora.getFullYear() - ingreso.getFullYear()
+    let meses = ahora.getMonth() - ingreso.getMonth()
+    if (ahora.getDate() < ingreso.getDate()) meses--
+    if (meses < 0) { anios--; meses += 12 }
+
+    const diffMs = ahora.getTime() - ingreso.getTime()
     const totalDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-    const anios = Math.floor(totalDias / 365.25)
-    const meses = Math.floor((totalDias % 365.25) / 30.44)
 
     let texto = ''
     if (anios > 0) texto += `${anios} año${anios > 1 ? 's' : ''}`
     if (meses > 0) texto += `${texto ? ' y ' : ''}${meses} mes${meses > 1 ? 'es' : ''}`
     if (!texto) texto = `${totalDias} días`
 
-    // Vacaciones según LCT Argentina
+    // Vacaciones según LCT Argentina (art. 150)
+    // Se toma la antigüedad al 31/12 del año
     let diasVacaciones = 14
     if (anios >= 20) diasVacaciones = 35
     else if (anios >= 10) diasVacaciones = 28
     else if (anios >= 5) diasVacaciones = 21
-    else if (anios < 1) diasVacaciones = Math.floor(totalDias / 20) // 1 día cada 20 trabajados
+    else if (anios < 1) diasVacaciones = Math.min(14, Math.floor(totalDias / 20))
 
     return { texto, diasVacaciones }
   }
