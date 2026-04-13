@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     Empleado, Nomina, NominaDetalle, PeriodoNomina,
-    Contrato, Asistencia, Sucursal,
+    Contrato, Asistencia, Sucursal, EventoEmpleado, CategoriaEvento,
 )
 from app.models.usuario import Usuario
 
@@ -109,25 +109,49 @@ async def reporte_asistencias(
     r = await db.execute(q.order_by(Empleado.apellido))
     empleados = r.scalars().all()
 
+    # Buscar categoría de falta injustificada
+    r_cat = await db.execute(
+        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["FALTA_INJ", "falta_inj"]))
+    )
+    cat_falta = r_cat.scalars().first()
+
+    # Días hábiles en el rango (lunes a sábado)
+    total_dias = (fecha_hasta - fecha_desde).days + 1
+    dias_habiles = sum(
+        1 for i in range(total_dias)
+        if (fecha_desde.toordinal() + i) % 7 != 6  # excluir solo domingo
+    )
+
     resultado = []
     for emp in empleados:
+        # Ausentes = eventos FALTA_INJ aprobados en el rango
+        ausentes = 0
+        if cat_falta:
+            r_faltas = await db.execute(
+                select(EventoEmpleado).where(
+                    EventoEmpleado.empleado_id == emp.id,
+                    EventoEmpleado.categoria_evento_id == cat_falta.id,
+                    EventoEmpleado.estado == "aprobado",
+                    EventoEmpleado.fecha_inicial >= fecha_desde,
+                    EventoEmpleado.fecha_inicial <= fecha_hasta,
+                )
+            )
+            ausentes = len(r_faltas.scalars().all())
+
+        # Tardanzas desde registros de asistencia
         r_asist = await db.execute(
             select(Asistencia).where(
                 Asistencia.empleado_id == emp.id,
                 Asistencia.fecha >= fecha_desde,
                 Asistencia.fecha <= fecha_hasta,
+                Asistencia.estado == "tarde",
             )
         )
-        asistencias = r_asist.scalars().all()
-        presentes = sum(1 for a in asistencias if a.estado == "presente")
-        tarde = sum(1 for a in asistencias if a.estado == "tarde")
-        # Días laborales esperados (simplificado: días en el rango que no sean finde)
-        total_dias = (fecha_hasta - fecha_desde).days + 1
-        dias_habiles = sum(
-            1 for i in range(total_dias)
-            if (fecha_desde.toordinal() + i) % 7 not in (5, 6)  # 5=sáb, 6=dom
-        )
-        ausentes = max(0, dias_habiles - len(asistencias))
+        tarde = len(r_asist.scalars().all())
+
+        # Presentes = días hábiles - ausentes - tardes
+        presentes = max(0, dias_habiles - ausentes - tarde)
+
         resultado.append(ReporteAsistenciaEmpleado(
             empleado_id=emp.id,
             nombre=emp.nombre,
