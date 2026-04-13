@@ -338,7 +338,7 @@ class EventoEmpleadoUpdate(BaseSchema):
 class EventoEmpleadoOut(BaseSchema):
     id: int
     empleado_id: int
-    sucursal_id: int
+    sucursal_id: Optional[int] = None
     encargado_id: Optional[int] = None
     categoria_evento_id: int
     fecha_inicial: datetime
@@ -347,11 +347,14 @@ class EventoEmpleadoOut(BaseSchema):
     estado: str
     justificado: bool
     motivo_actualizacion: Optional[str] = None
-    up_calendar: bool
+    up_calendar: bool = False
     google_event_id: Optional[str] = None
     horas_cantidad: Optional[Decimal] = None
     porcentaje_extra: Optional[int] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
+    empleado_nombre: Optional[str] = None
+    categoria_nombre: Optional[str] = None
+    sucursal_nombre: Optional[str] = None
 
 class AprobarEventoRequest(BaseSchema):
     justificado: bool = True
