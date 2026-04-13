@@ -311,11 +311,19 @@ async def calcular_masivo(
     if not contratos:
         raise HTTPException(400, "No hay empleados con contratos activos")
 
-    # Verificar qué empleados ya tienen nómina en este período
+    # Borrar nóminas existentes del período para recalcular
     r_existentes = await db.execute(
-        select(Nomina.empleado_id).where(Nomina.periodo_id == body.periodo_id)
+        select(Nomina).where(Nomina.periodo_id == body.periodo_id)
     )
-    ya_calculados = set(r_existentes.scalars().all())
+    for nom_existente in r_existentes.scalars().all():
+        # Borrar detalles primero
+        r_det = await db.execute(
+            select(NominaDetalle).where(NominaDetalle.nomina_id == nom_existente.id)
+        )
+        for det in r_det.scalars().all():
+            await db.delete(det)
+        await db.delete(nom_existente)
+    await db.flush()
 
     resultados = []
     for contrato in contratos:
@@ -323,11 +331,8 @@ async def calcular_masivo(
         empleado = await db.get(Empleado, contrato.empleado_id)
         if not empleado or not empleado.activo:
             continue
-        # Saltar si ya tiene nómina en este período
-        if contrato.empleado_id in ya_calculados:
-            continue
 
-        # Reutilizar la lógica de generar_borrador
+        # Generar borrador para cada empleado
         req = GenerarBorradorReq(empleado_id=contrato.empleado_id, periodo_id=body.periodo_id)
         nomina = await generar_borrador(req, db, current_user)
         resultados.append(await _enrich_nomina(nomina, db))

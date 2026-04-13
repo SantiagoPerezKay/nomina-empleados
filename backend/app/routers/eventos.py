@@ -15,6 +15,19 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/eventos", tags=["Eventos"])
 
 
+async def _enrich_evento(ev: EventoEmpleado, db: AsyncSession) -> dict:
+    """Agrega empleado_nombre, categoria_nombre y sucursal_nombre."""
+    from app.models.models import Sucursal
+    data = {c.name: getattr(ev, c.name) for c in ev.__table__.columns}
+    emp = await db.get(Empleado, ev.empleado_id) if ev.empleado_id else None
+    cat = await db.get(CategoriaEvento, ev.categoria_evento_id) if ev.categoria_evento_id else None
+    suc = await db.get(Sucursal, ev.sucursal_id) if ev.sucursal_id else None
+    data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}" if emp else None
+    data["categoria_nombre"] = cat.nombre if cat else None
+    data["sucursal_nombre"] = suc.nombre if suc else None
+    return data
+
+
 @router.get("/pendientes", response_model=list[EventoEmpleadoOut])
 async def pendientes(
     sucursal_id: int | None = None,
@@ -28,7 +41,7 @@ async def pendientes(
         q = q.where(EventoEmpleado.sucursal_id == sucursal_id)
     q = q.order_by(EventoEmpleado.fecha_inicial.desc()).offset(skip).limit(limit)
     r = await db.execute(q)
-    return r.scalars().all()
+    return [await _enrich_evento(e, db) for e in r.scalars().all()]
 
 
 @router.get("", response_model=list[EventoEmpleadoOut])
@@ -47,7 +60,7 @@ async def listar(
         q = q.where(EventoEmpleado.estado == estado)
     q = q.offset(skip).limit(limit).order_by(EventoEmpleado.fecha_inicial.desc())
     r = await db.execute(q)
-    return r.scalars().all()
+    return [await _enrich_evento(e, db) for e in r.scalars().all()]
 
 
 @router.get("/{id}", response_model=EventoEmpleadoOut)
@@ -55,7 +68,7 @@ async def obtener(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_cur
     e = await db.get(EventoEmpleado, id)
     if not e:
         raise HTTPException(404, "Evento no encontrado")
-    return e
+    return await _enrich_evento(e, db)
 
 
 @router.get("/{id}/historial", response_model=list[EventoHistorialOut])
