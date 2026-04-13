@@ -501,4 +501,5 @@ class NominaOut(BaseSchema):
     neto_a_pagar: Optional[Decimal] = None
     observacion: Optional[str] = None
     empleado_nombre: Optional[str] = None
+    periodo_label: Optional[str] = None
     created_at: Optional[datetime] = None

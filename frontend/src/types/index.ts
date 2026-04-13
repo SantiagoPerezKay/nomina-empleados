@@ -152,7 +152,7 @@ export interface Nomina {
   id: number; empleado_id: number; contrato_id: number; periodo_id: number
   salario_base: number; total_ingresos: number
   total_deducciones: number; neto_a_pagar: number
-  empleado_nombre?: string; detalles?: NominaDetalle[]
+  empleado_nombre?: string; periodo_label?: string; detalles?: NominaDetalle[]
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

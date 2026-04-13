@@ -392,7 +392,7 @@ export default function EmpleadoDetallePage() {
               <Table.Tbody>
                 {(nominas ?? []).map((n) => (
                   <Table.Tr key={n.id}>
-                    <Table.Td>Período #{n.periodo_id}</Table.Td>
+                    <Table.Td>{n.periodo_label ?? `Período #${n.periodo_id}`}</Table.Td>
                     <Table.Td>${n.salario_base.toLocaleString('es-AR')}</Table.Td>
                     <Table.Td>${n.total_ingresos.toLocaleString('es-AR')}</Table.Td>
                     <Table.Td>${n.total_deducciones.toLocaleString('es-AR')}</Table.Td>

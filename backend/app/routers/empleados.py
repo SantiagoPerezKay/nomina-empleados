@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
-from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, CategoriaEgreso, CategoriaEvento, Sucursal, Departamento
+from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, PeriodoNomina, CategoriaEgreso, CategoriaEvento, Sucursal, Departamento
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
     EmpleadoCreate, EmpleadoOut, EmpleadoUpdate,
@@ -226,4 +226,12 @@ async def nominas_del_empleado(
         select(Nomina).where(Nomina.empleado_id == id)
         .order_by(Nomina.created_at.desc()).offset(skip).limit(limit)
     )
-    return r.scalars().all()
+    nominas = r.scalars().all()
+    result = []
+    for n in nominas:
+        data = {c.name: getattr(n, c.name) for c in n.__table__.columns}
+        data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}"
+        periodo = await db.get(PeriodoNomina, n.periodo_id) if n.periodo_id else None
+        data["periodo_label"] = f"{periodo.tipo} | {periodo.fecha_inicio} → {periodo.fecha_fin}" if periodo else None
+        result.append(data)
+    return result
