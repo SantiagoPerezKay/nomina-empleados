@@ -15,7 +15,7 @@ import { IconArrowLeft, IconPlus, IconTrash, IconSettings } from '@tabler/icons-
 import { format } from 'date-fns'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
-  getAsistenciasEmpleado, getNominasEmpleado, createContrato,
+  getNominasEmpleado, createContrato,
 } from '../api/empleados'
 import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato } from '../api/general'
 import type { AsignacionTurnoCreate } from '../types'
@@ -65,7 +65,7 @@ export default function EmpleadoDetallePage() {
   const { data: emp, isLoading } = useQuery({ queryKey: ['empleado', empId], queryFn: () => getEmpleado(empId) })
   const { data: contratos } = useQuery({ queryKey: ['empleado-contratos', empId], queryFn: () => getContratosEmpleado(empId) })
   const { data: eventos } = useQuery({ queryKey: ['empleado-eventos', empId], queryFn: () => getEventosEmpleado(empId) })
-  const { data: asistencias } = useQuery({ queryKey: ['empleado-asistencias', empId], queryFn: () => getAsistenciasEmpleado(empId) })
+  // Asistencias automáticas — no se consultan
   const { data: nominas } = useQuery({ queryKey: ['empleado-nominas', empId], queryFn: () => getNominasEmpleado(empId) })
   const { data: asignaciones } = useQuery({ queryKey: ['empleado-asignaciones', empId], queryFn: () => getAsignacionesTurno(empId) })
   const { data: turnos } = useQuery({ queryKey: ['turnos'], queryFn: getTurnos })
@@ -142,6 +142,32 @@ export default function EmpleadoDetallePage() {
     defaultValues: { fecha_desde: hoy(), dia_semana: 0 },
   })
 
+  // Calcular antigüedad y vacaciones según régimen argentino (LCT art. 150)
+  const calcAntiguedad = () => {
+    if (!emp?.fecha_ingreso) return { texto: '—', diasVacaciones: 0 }
+    const ingreso = new Date(emp.fecha_ingreso)
+    const hoy = new Date()
+    const diffMs = hoy.getTime() - ingreso.getTime()
+    const totalDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    const anios = Math.floor(totalDias / 365.25)
+    const meses = Math.floor((totalDias % 365.25) / 30.44)
+
+    let texto = ''
+    if (anios > 0) texto += `${anios} año${anios > 1 ? 's' : ''}`
+    if (meses > 0) texto += `${texto ? ' y ' : ''}${meses} mes${meses > 1 ? 'es' : ''}`
+    if (!texto) texto = `${totalDias} días`
+
+    // Vacaciones según LCT Argentina
+    let diasVacaciones = 14
+    if (anios >= 20) diasVacaciones = 35
+    else if (anios >= 10) diasVacaciones = 28
+    else if (anios >= 5) diasVacaciones = 21
+    else if (anios < 1) diasVacaciones = Math.floor(totalDias / 20) // 1 día cada 20 trabajados
+
+    return { texto, diasVacaciones }
+  }
+  const antiguedad = calcAntiguedad()
+
   if (isLoading) return <Skeleton h={400} />
 
   return (
@@ -164,6 +190,8 @@ export default function EmpleadoDetallePage() {
           <Text size="sm"><b>Sucursal:</b> {emp?.sucursal_nombre ?? '—'}</Text>
           <Text size="sm"><b>Departamento:</b> {emp?.departamento_nombre ?? '—'}</Text>
           <Text size="sm"><b>Ingreso:</b> {emp?.fecha_ingreso}</Text>
+          <Text size="sm"><b>Antigüedad:</b> {antiguedad.texto}</Text>
+          <Text size="sm"><b>Vacaciones:</b> {antiguedad.diasVacaciones} días/año</Text>
           {emp?.fecha_egreso && <Text size="sm" c="red"><b>Egreso:</b> {emp.fecha_egreso}</Text>}
           <Text size="sm"><b>Email:</b> {emp?.email ?? '—'}</Text>
           <Text size="sm"><b>Tel:</b> {emp?.telefono ?? '—'}</Text>
@@ -175,7 +203,6 @@ export default function EmpleadoDetallePage() {
           <Tabs.Tab value="contratos">Contratos ({contratos?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="horarios">Horarios ({asignaciones?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="eventos">Eventos ({eventos?.length ?? 0})</Tabs.Tab>
-          <Tabs.Tab value="asistencias">Asistencias ({asistencias?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="nominas">Nóminas ({nominas?.length ?? 0})</Tabs.Tab>
         </Tabs.List>
 
@@ -336,39 +363,6 @@ export default function EmpleadoDetallePage() {
                       </Badge>
                     </Table.Td>
                     <Table.Td>{e.observacion ?? '—'}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Tabs.Panel>
-
-        {/* Asistencias */}
-        <Tabs.Panel value="asistencias" pt="sm">
-          <Table.ScrollContainer minWidth={400}>
-            <Table striped>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Fecha</Table.Th>
-                  <Table.Th>Entrada</Table.Th>
-                  <Table.Th>Salida</Table.Th>
-                  <Table.Th>Estado</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {(asistencias ?? []).map((a) => (
-                  <Table.Tr key={a.id}>
-                    <Table.Td>{a.fecha}</Table.Td>
-                    <Table.Td>{a.hora_entrada ?? '—'}</Table.Td>
-                    <Table.Td>{a.hora_salida ?? '—'}</Table.Td>
-                    <Table.Td>
-                      <Badge
-                        color={a.estado === 'presente' ? 'green' : a.estado === 'tarde' ? 'yellow' : 'red'}
-                        variant="light" size="xs"
-                      >
-                        {a.estado}
-                      </Badge>
-                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
