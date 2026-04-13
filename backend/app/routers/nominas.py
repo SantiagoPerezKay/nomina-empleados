@@ -1,6 +1,6 @@
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -312,17 +312,10 @@ async def calcular_masivo(
         raise HTTPException(400, "No hay empleados con contratos activos")
 
     # Borrar nóminas existentes del período para recalcular
-    r_existentes = await db.execute(
-        select(Nomina).where(Nomina.periodo_id == body.periodo_id)
-    )
-    for nom_existente in r_existentes.scalars().all():
-        # Borrar detalles primero
-        r_det = await db.execute(
-            select(NominaDetalle).where(NominaDetalle.nomina_id == nom_existente.id)
-        )
-        for det in r_det.scalars().all():
-            await db.delete(det)
-        await db.delete(nom_existente)
+    # Primero detalles, luego nóminas (respetar FK)
+    nomina_ids_sub = select(Nomina.id).where(Nomina.periodo_id == body.periodo_id)
+    await db.execute(delete(NominaDetalle).where(NominaDetalle.nomina_id.in_(nomina_ids_sub)))
+    await db.execute(delete(Nomina).where(Nomina.periodo_id == body.periodo_id))
     await db.flush()
 
     resultados = []
