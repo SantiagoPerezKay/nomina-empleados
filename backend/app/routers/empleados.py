@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
-from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, CategoriaEgreso, Sucursal, Departamento
+from app.models.models import Empleado, Contrato, EventoEmpleado, Asistencia, Nomina, CategoriaEgreso, CategoriaEvento, Sucursal, Departamento
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
     EmpleadoCreate, EmpleadoOut, EmpleadoUpdate,
@@ -176,7 +176,16 @@ async def eventos_del_empleado(
         q = q.where(EventoEmpleado.estado == estado)
     q = q.order_by(EventoEmpleado.fecha_inicial.desc()).offset(skip).limit(limit)
     r = await db.execute(q)
-    return r.scalars().all()
+    eventos = r.scalars().all()
+    result = []
+    for ev in eventos:
+        data = {c.name: getattr(ev, c.name) for c in ev.__table__.columns}
+        cat = await db.get(CategoriaEvento, ev.categoria_evento_id) if ev.categoria_evento_id else None
+        data["categoria_nombre"] = cat.nombre if cat else None
+        data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}"
+        data["sucursal_nombre"] = None
+        result.append(data)
+    return result
 
 
 @router.get("/{id}/asistencias", response_model=list[AsistenciaOut])
