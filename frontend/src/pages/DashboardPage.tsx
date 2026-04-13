@@ -59,7 +59,7 @@ export default function DashboardPage() {
       ) : kpis ? (
         <SimpleGrid cols={{ base: 1, sm: 2, md: 5 }}>
           <KPICard title="Empleados activos" value={kpis.total_empleados_activos} icon={IconUsers} color="blue" />
-          <KPICard title="Nómina mes actual" value={formatMoney(kpis.total_nomina_mes_actual)} icon={IconCurrencyDollar} color="green" />
+          <KPICard title="Total valor en nóminas" value={formatMoney(kpis.total_nomina_mes_actual)} icon={IconCurrencyDollar} color="green" />
           <KPICard title="Eventos pendientes" value={kpis.eventos_pendientes} icon={IconAlertCircle} color="orange" />
           <KPICard title="Presentes hoy" value={kpis.asistencias_hoy} icon={IconClockHour4} color="teal" />
           <KPICard title="Ausentes hoy" value={kpis.ausentes_hoy} icon={IconUserOff} color="red" />
