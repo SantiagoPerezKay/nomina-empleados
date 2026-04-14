@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,9 +61,17 @@ async def listar(
     if estado:
         q = q.where(EventoEmpleado.estado == estado)
     if fecha_desde:
-        q = q.where(EventoEmpleado.fecha_inicial >= fecha_desde)
+        try:
+            fd = datetime.combine(date.fromisoformat(fecha_desde), time.min)
+            q = q.where(EventoEmpleado.fecha_inicial >= fd)
+        except ValueError:
+            raise HTTPException(400, "fecha_desde inválida (formato YYYY-MM-DD)")
     if fecha_hasta:
-        q = q.where(EventoEmpleado.fecha_inicial <= fecha_hasta + "T23:59:59")
+        try:
+            fh = datetime.combine(date.fromisoformat(fecha_hasta), time.max)
+            q = q.where(EventoEmpleado.fecha_inicial <= fh)
+        except ValueError:
+            raise HTTPException(400, "fecha_hasta inválida (formato YYYY-MM-DD)")
     q = q.offset(skip).limit(limit).order_by(EventoEmpleado.fecha_inicial.desc())
     r = await db.execute(q)
     return [await _enrich_evento(e, db) for e in r.scalars().all()]
