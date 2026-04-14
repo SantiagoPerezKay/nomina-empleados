@@ -1,5 +1,5 @@
 import client from './client'
-import type { ReporteNominaEmpleado, ReporteAsistencia, ReporteEgreso, ReporteEmpleadoActivo } from '../types'
+import type { ReporteNominaEmpleado, ReporteAsistencia, ReporteEgreso, ReporteEmpleadoActivo, ReporteVacaciones } from '../types'
 
 export const getReporteNomina = async (periodo_id: number, sucursal_id?: number) =>
   (await client.get<ReporteNominaEmpleado[]>(`/reportes/nomina/${periodo_id}`, { params: { sucursal_id } })).data
@@ -12,3 +12,6 @@ export const getReporteEgresos = async (fecha_desde: string, fecha_hasta: string
 
 export const getReporteEmpleadosActivos = async (sucursal_id?: number, departamento_id?: number) =>
   (await client.get<ReporteEmpleadoActivo[]>('/reportes/empleados/activos', { params: { sucursal_id, departamento_id } })).data
+
+export const getReporteVacaciones = async (anio?: number, sucursal_id?: number) =>
+  (await client.get<ReporteVacaciones[]>('/reportes/vacaciones', { params: { anio, sucursal_id } })).data

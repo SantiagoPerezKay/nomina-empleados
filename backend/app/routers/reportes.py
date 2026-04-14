@@ -56,6 +56,17 @@ class ReporteEmpleadoActivo(BaseModel):
     salario_mensual: Optional[Decimal]
     tarifa_hora: Optional[Decimal]
 
+class ReporteVacaciones(BaseModel):
+    empleado_id: int
+    nombre: str
+    apellido: str
+    sucursal: Optional[str]
+    fecha_ingreso: date
+    antiguedad_anios: int
+    dias_correspondientes: int
+    dias_tomados: int
+    dias_pendientes: int
+
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -237,3 +248,94 @@ async def reporte_empleados_activos(
         )
         for emp, cont, suc in rows
     ]
+
+
+def _calcular_vacaciones_lct(fecha_ingreso: date) -> tuple[int, int]:
+    """Calcula antigüedad en años y días de vacaciones según LCT Argentina art. 150."""
+    hoy = date.today()
+    anios = hoy.year - fecha_ingreso.year
+    if (hoy.month, hoy.day) < (fecha_ingreso.month, fecha_ingreso.day):
+        anios -= 1
+    anios = max(anios, 0)
+
+    if anios >= 20:
+        dias = 35
+    elif anios >= 10:
+        dias = 28
+    elif anios >= 5:
+        dias = 21
+    elif anios >= 1:
+        dias = 14
+    else:
+        total_dias = (hoy - fecha_ingreso).days
+        dias = min(14, total_dias // 20)
+
+    return anios, dias
+
+
+@router.get("/vacaciones", response_model=list[ReporteVacaciones])
+async def reporte_vacaciones(
+    anio: int | None = None,
+    sucursal_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: Usuario = Depends(require_roles("superadmin", "admin", "rrhh", "liquidador")),
+):
+    """Vacaciones pendientes por empleado."""
+    year = anio or date.today().year
+
+    # Buscar categoría de vacaciones
+    r_cat = await db.execute(
+        select(CategoriaEvento).where(
+            CategoriaEvento.codigo.in_(["VACACIONES", "vacaciones", "solicitud_vacaciones"])
+        )
+    )
+    cat_vac = r_cat.scalars().first()
+
+    q = (
+        select(Empleado, Sucursal)
+        .outerjoin(Sucursal, Empleado.sucursal_id == Sucursal.id)
+        .where(Empleado.activo == True)
+    )
+    if sucursal_id:
+        q = q.where(Empleado.sucursal_id == sucursal_id)
+    q = q.order_by(Empleado.apellido)
+    r = await db.execute(q)
+    rows = r.all()
+
+    resultado = []
+    for emp, suc in rows:
+        anios_ant, dias_corresp = _calcular_vacaciones_lct(emp.fecha_ingreso)
+
+        # Contar días de vacaciones tomados en el año
+        dias_tomados = 0
+        if cat_vac:
+            r_vac = await db.execute(
+                select(EventoEmpleado).where(
+                    EventoEmpleado.empleado_id == emp.id,
+                    EventoEmpleado.categoria_evento_id == cat_vac.id,
+                    EventoEmpleado.estado == "aprobado",
+                    EventoEmpleado.fecha_inicial >= date(year, 1, 1),
+                    EventoEmpleado.fecha_inicial <= date(year, 12, 31),
+                )
+            )
+            for ev in r_vac.scalars().all():
+                if ev.fecha_final and ev.fecha_inicial:
+                    f_ini = ev.fecha_inicial.date() if hasattr(ev.fecha_inicial, 'date') else ev.fecha_inicial
+                    f_fin = ev.fecha_final.date() if hasattr(ev.fecha_final, 'date') else ev.fecha_final
+                    dias_tomados += (f_fin - f_ini).days + 1
+                else:
+                    dias_tomados += 1
+
+        resultado.append(ReporteVacaciones(
+            empleado_id=emp.id,
+            nombre=emp.nombre,
+            apellido=emp.apellido,
+            sucursal=suc.nombre if suc else None,
+            fecha_ingreso=emp.fecha_ingreso,
+            antiguedad_anios=anios_ant,
+            dias_correspondientes=dias_corresp,
+            dias_tomados=dias_tomados,
+            dias_pendientes=max(0, dias_corresp - dias_tomados),
+        ))
+
+    return resultado

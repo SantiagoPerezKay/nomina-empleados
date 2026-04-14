@@ -7,7 +7,7 @@ import {
 import { useDisclosure } from '@mantine/hooks'
 import {
   IconDashboard, IconUsers, IconCalendarEvent,
-  IconCurrencyDollar, IconChartBar,
+  IconCurrencyDollar, IconChartBar, IconCalendar,
   IconSettings, IconLogout, IconChevronDown,
   IconSun, IconMoon,
 } from '@tabler/icons-react'
@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Eventos', icon: IconCalendarEvent, to: '/eventos' },
   { label: 'Nóminas', icon: IconCurrencyDollar, to: '/nominas' },
   { label: 'Reportes', icon: IconChartBar, to: '/reportes' },
+  { label: 'Calendario', icon: IconCalendar, to: '/calendario' },
   { label: 'Configuración', icon: IconSettings, to: '/config' },
 ]
 

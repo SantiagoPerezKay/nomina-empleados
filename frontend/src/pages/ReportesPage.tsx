@@ -8,6 +8,7 @@ import { IconDownload } from '@tabler/icons-react'
 import {
   getReporteNomina, getReporteAsistencias,
   getReporteEgresos, getReporteEmpleadosActivos,
+  getReporteVacaciones,
 } from '../api/reportes'
 import { getPeriodos } from '../api/nominas'
 import { getSucursales, getDepartamentos } from '../api/general'
@@ -68,6 +69,11 @@ export default function ReportesPage() {
     queryFn: () => getReporteEmpleadosActivos(sucursalFiltro, deptFiltro),
   })
 
+  const { data: reporteVacaciones, isLoading: loadingVac } = useQuery({
+    queryKey: ['reporte-vacaciones', sucursalFiltro],
+    queryFn: () => getReporteVacaciones(undefined, sucursalFiltro),
+  })
+
   const formatMoney = (n: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
 
@@ -101,6 +107,7 @@ export default function ReportesPage() {
           <Tabs.Tab value="asistencias">Asistencias</Tabs.Tab>
           <Tabs.Tab value="egresos">Egresos</Tabs.Tab>
           <Tabs.Tab value="activos">Plantel activo</Tabs.Tab>
+          <Tabs.Tab value="vacaciones">Vacaciones</Tabs.Tab>
         </Tabs.List>
 
         {/* Nómina por período */}
@@ -279,6 +286,55 @@ export default function ReportesPage() {
                           : r.tarifa_hora
                             ? `$${r.tarifa_hora}/h`
                             : '—'}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Tabs.Panel>
+
+        {/* Vacaciones */}
+        <Tabs.Panel value="vacaciones" pt="md">
+          <Group mb="md" justify="flex-end">
+            {reporteVacaciones && (
+              <Button
+                variant="outline"
+                leftSection={<IconDownload size={14} />}
+                onClick={() => downloadCSV(reporteVacaciones, 'vacaciones.csv')}
+              >
+                CSV
+              </Button>
+            )}
+          </Group>
+          {loadingVac ? <Skeleton h={200} /> : (
+            <Table.ScrollContainer minWidth={800}>
+              <Table striped>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Apellido</Table.Th>
+                    <Table.Th>Nombre</Table.Th>
+                    <Table.Th>Sucursal</Table.Th>
+                    <Table.Th>Ingreso</Table.Th>
+                    <Table.Th>Antigüedad</Table.Th>
+                    <Table.Th>Corresponden</Table.Th>
+                    <Table.Th>Tomados</Table.Th>
+                    <Table.Th>Pendientes</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {(reporteVacaciones ?? []).map(r => (
+                    <Table.Tr key={r.empleado_id}>
+                      <Table.Td>{r.apellido}</Table.Td>
+                      <Table.Td>{r.nombre}</Table.Td>
+                      <Table.Td>{r.sucursal ?? '—'}</Table.Td>
+                      <Table.Td>{r.fecha_ingreso}</Table.Td>
+                      <Table.Td>{r.antiguedad_anios} año{r.antiguedad_anios !== 1 ? 's' : ''}</Table.Td>
+                      <Table.Td>{r.dias_correspondientes}</Table.Td>
+                      <Table.Td>{r.dias_tomados}</Table.Td>
+                      <Table.Td fw={700} c={r.dias_pendientes > 0 ? 'orange' : 'green'}>
+                        {r.dias_pendientes}
                       </Table.Td>
                     </Table.Tr>
                   ))}

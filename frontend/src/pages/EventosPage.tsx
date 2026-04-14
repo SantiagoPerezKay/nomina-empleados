@@ -30,7 +30,7 @@ const rechazarSchema = z.object({ motivo: z.string().min(1, 'Requerido') })
 
 export default function EventosPage() {
   const qc = useQueryClient()
-  const [filtroEstado, setFiltroEstado] = useState<string>('sin_revisar')
+  const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [rechazarTarget, setRechazarTarget] = useState<number | null>(null)
   const [historialTarget, setHistorialTarget] = useState<number | null>(null)
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure()

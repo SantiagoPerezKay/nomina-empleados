@@ -17,6 +17,7 @@ import EventosPage from './pages/EventosPage'
 import NominasPage from './pages/NominasPage'
 import ReportesPage from './pages/ReportesPage'
 import ConfigPage from './pages/ConfigPage'
+import CalendarPage from './pages/CalendarPage'
 import { theme } from './theme'
 import { useColorSchemeStore } from './stores/colorScheme'
 
@@ -49,6 +50,7 @@ export default function App() {
                 <Route path="eventos" element={<EventosPage />} />
                 <Route path="nominas" element={<NominasPage />} />
                 <Route path="reportes" element={<ReportesPage />} />
+                <Route path="calendario" element={<CalendarPage />} />
                 <Route path="config" element={<ConfigPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

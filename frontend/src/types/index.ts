@@ -189,6 +189,12 @@ export interface ReporteEmpleadoActivo {
   fecha_ingreso: string; tipo_contrato: string | null
   salario_mensual: number | null; tarifa_hora: number | null
 }
+export interface ReporteVacaciones {
+  empleado_id: number; nombre: string; apellido: string
+  sucursal: string | null; fecha_ingreso: string
+  antiguedad_anios: number; dias_correspondientes: number
+  dias_tomados: number; dias_pendientes: number
+}
 
 // ── Asignaciones de Turno ─────────────────────────────────────────────────────
 export interface AsignacionTurno {
