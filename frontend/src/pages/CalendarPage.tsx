@@ -50,13 +50,19 @@ export default function CalendarPage() {
   const [rechazarTarget, setRechazarTarget] = useState<number | null>(null)
   const [rechazarMotivo, setRechazarMotivo] = useState('')
 
-  // Fetch all events for the visible month range
+  // Fetch events for the visible month range
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
 
   const { data: eventos } = useQuery({
-    queryKey: ['eventos-calendar', format(monthStart, 'yyyy-MM-dd')],
-    queryFn: () => getEventos({ limit: 500 }),
+    queryKey: ['eventos-calendar', format(calStart, 'yyyy-MM-dd'), format(calEnd, 'yyyy-MM-dd')],
+    queryFn: () => getEventos({
+      fecha_desde: format(calStart, 'yyyy-MM-dd'),
+      fecha_hasta: format(calEnd, 'yyyy-MM-dd'),
+      limit: 1000,
+    }),
   })
 
   const { data: catEventos } = useQuery({ queryKey: ['cat-eventos'], queryFn: getCatEventos })

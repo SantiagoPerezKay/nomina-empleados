@@ -1,7 +1,7 @@
 import client from './client'
 import type { EventoEmpleado, EventoCreate, AprobarEventoRequest, RechazarEventoRequest, EventoHistorial } from '../types'
 
-export const getEventos = async (params?: { estado?: string; sucursal_id?: number; limit?: number }) => {
+export const getEventos = async (params?: { estado?: string; sucursal_id?: number; limit?: number; fecha_desde?: string; fecha_hasta?: string }) => {
   const res = await client.get<EventoEmpleado[]>('/eventos', { params })
   return res.data
 }

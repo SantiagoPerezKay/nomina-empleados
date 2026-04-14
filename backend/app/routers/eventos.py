@@ -48,8 +48,10 @@ async def pendientes(
 async def listar(
     empleado_id: int | None = None,
     estado: str | None = None,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, le=1000),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -58,6 +60,10 @@ async def listar(
         q = q.where(EventoEmpleado.empleado_id == empleado_id)
     if estado:
         q = q.where(EventoEmpleado.estado == estado)
+    if fecha_desde:
+        q = q.where(EventoEmpleado.fecha_inicial >= fecha_desde)
+    if fecha_hasta:
+        q = q.where(EventoEmpleado.fecha_inicial <= fecha_hasta + "T23:59:59")
     q = q.offset(skip).limit(limit).order_by(EventoEmpleado.fecha_inicial.desc())
     r = await db.execute(q)
     return [await _enrich_evento(e, db) for e in r.scalars().all()]
