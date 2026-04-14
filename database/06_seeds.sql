@@ -46,7 +46,7 @@ INSERT INTO sucursales (nombre, ciudad) VALUES
 -- CATEGORIAS DE EVENTO (de la tabla vieja campo 'motivo')
 -- ============================================================
 INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina) VALUES
-  ('llegada_tarde',         'Llegada tarde',                  TRUE,  TRUE),
+  ('llegada_tarde',         'Llegada tarde',                  TRUE,  FALSE),
   ('ausencia',              'Ausencia',                       TRUE,  TRUE),
   ('no_llego',              'No llegó',                       TRUE,  TRUE),
   ('horas_extras',          'Horas extras',                   TRUE,  TRUE),
@@ -78,8 +78,8 @@ INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria) VALUES
   ('sindicato',        'Cuota sindical (2%)',             'deduccion', 'aporte_social'),
   ('imp_ganancias',    'Impuesto a las ganancias',       'deduccion', 'impuesto'),
   ('adelanto_desc',    'Descuento por adelanto',          'deduccion', 'adelanto'),
-  ('ausencia_desc',    'Descuento por ausencia injust.',  'deduccion', 'ausencia'),
-  ('llegada_tarde_desc','Descuento por llegada tarde',    'deduccion', 'llegada_tarde');
+  ('ausencia_desc',    'Descuento por ausencia injust.',  'deduccion', 'ausencia');
+-- NOTA: las llegadas tarde NO afectan el cálculo de nómina (por regla de negocio)
 
 -- Actualizar porcentajes para aportes sociales
 UPDATE conceptos_nomina SET porcentaje = 0.1100 WHERE codigo = 'jubilacion';

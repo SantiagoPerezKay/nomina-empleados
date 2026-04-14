@@ -149,6 +149,15 @@ async def generar_borrador(
     )
     cat_falta_inj = r_cat_falta.scalars().first()
 
+    # ── Regla de negocio: llegadas tarde NO afectan el cálculo de nómina ─────
+    # Se registran como eventos para trazabilidad pero no generan descuentos.
+    r_cat_tarde = await db.execute(
+        select(CategoriaEvento.id).where(
+            CategoriaEvento.codigo.in_(["llegada_tarde", "TARDANZA", "tardanza", "LLEGADA_TARDE"])
+        )
+    )
+    tarde_cat_ids = set(r_cat_tarde.scalars().all())
+
     # ── Eventos aprobados del período ─────────────────────────────────────────
     r_ev = await db.execute(
         select(EventoEmpleado).where(
@@ -176,6 +185,10 @@ async def generar_borrador(
     valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * hs_por_dia
 
     for ev in eventos:
+        # Skip llegadas tarde: no afectan el cálculo de nómina (regla de negocio)
+        if ev.categoria_evento_id in tarde_cat_ids:
+            continue
+
         fecha_ev = ev.fecha_inicial.date() if hasattr(ev.fecha_inicial, 'date') else ev.fecha_inicial
 
         # Horas extras

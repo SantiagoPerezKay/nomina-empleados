@@ -57,7 +57,7 @@ INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomin
   ('FALTA_INJ', 'Falta injustificada', true, true, true),
   ('FALTA_JUST', 'Falta justificada', true, false, true),
   ('VACACIONES', 'Vacaciones', true, false, true),
-  ('TARDANZA', 'Llegada tarde', false, true, true),
+  ('TARDANZA', 'Llegada tarde', false, false, true),
   ('HE_EXTRA', 'Horas extras', true, true, true),
   ('LIC_MED', 'Licencia médica', true, false, true);
 
