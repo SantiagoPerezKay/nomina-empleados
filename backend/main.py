@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
+from app.core.database import engine
 from app.routers.auth import router as auth_router
 from app.routers.empleados import router as empleados_router
 from app.routers.eventos import router as eventos_router
@@ -21,10 +24,42 @@ from app.routers.general import (
     turnos_router,
 )
 
+# ── Migraciones idempotentes al arranque ──────────────────────────────────────
+# Aplicar cambios de schema que no están cubiertos por una herramienta de
+# migraciones formal (alembic). Todas las sentencias deben ser idempotentes.
+STARTUP_MIGRATIONS = [
+    # Trazabilidad de usuario creador de eventos
+    """ALTER TABLE eventos_empleados
+       ADD COLUMN IF NOT EXISTS created_by_id INTEGER REFERENCES usuarios(id)""",
+    """CREATE INDEX IF NOT EXISTS idx_eventos_created_by
+       ON eventos_empleados(created_by_id)""",
+    # Categoría "Llamada de atención"
+    """INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina, activo)
+       VALUES ('LLAMADA_ATENCION', 'Llamada de atención', false, false, true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    # Llegadas tarde no afectan nómina (regla de negocio)
+    """UPDATE categorias_evento
+          SET afecta_nomina = false
+        WHERE codigo IN ('llegada_tarde', 'TARDANZA', 'tardanza', 'LLEGADA_TARDE')""",
+]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        for sql in STARTUP_MIGRATIONS:
+            try:
+                await conn.execute(text(sql))
+            except Exception as e:
+                print(f"[migration] skipped: {e}")
+    yield
+
+
 app = FastAPI(
     title="Nómina API",
     description="API REST para gestión de empleados y liquidación de nóminas",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
