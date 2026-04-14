@@ -105,6 +105,21 @@ async def egresar(
     if not cat:
         raise HTTPException(400, "Categoría de egreso inválida")
 
+    # Bloquear egreso si tiene eventos pendientes (sin_revisar)
+    r_pend = await db.execute(
+        select(EventoEmpleado).where(
+            EventoEmpleado.empleado_id == id,
+            EventoEmpleado.estado == "sin_revisar",
+        )
+    )
+    pendientes = r_pend.scalars().all()
+    if pendientes:
+        raise HTTPException(
+            400,
+            f"No se puede dar de baja: el empleado tiene {len(pendientes)} evento(s) "
+            f"pendiente(s) sin revisar. Aprobalos o rechazalos primero."
+        )
+
     emp.activo = False
     emp.fecha_egreso = body.fecha_egreso
     emp.motivo_egreso = body.motivo_egreso

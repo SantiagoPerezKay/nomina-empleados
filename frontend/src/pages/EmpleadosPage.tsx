@@ -175,7 +175,16 @@ export default function EmpleadosPage() {
       notifications.show({ message: 'Empleado egresado', color: 'orange' })
       setEgresoTarget(null)
     },
-    onError: () => notifications.show({ message: 'Error al egresar', color: 'red' }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail ?? 'Error al egresar'
+      notifications.show({
+        title: 'No se pudo dar de baja',
+        message: detail,
+        color: 'red',
+        autoClose: 8000,
+      })
+    },
   })
 
   const closeWizard = () => {
