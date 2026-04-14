@@ -99,7 +99,10 @@ export interface EventoEmpleado {
   estado: 'sin_revisar' | 'aprobado' | 'rechazado' | 'actualizado'
   justificado: boolean
   motivo_actualizacion: string | null
+  created_by_id?: number | null
+  created_at?: string | null
   empleado_nombre?: string; categoria_nombre?: string; sucursal_nombre?: string
+  created_by_nombre?: string | null
 }
 export interface EventoCreate {
   empleado_id: number; categoria_evento_id: number

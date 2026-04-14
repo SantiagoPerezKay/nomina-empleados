@@ -162,6 +162,7 @@ class EventoEmpleado(Base):
     # Campos para horas extras
     horas_cantidad      = Column(Numeric(6, 2), nullable=True)
     porcentaje_extra    = Column(Integer, nullable=True)  # 50 o 100
+    created_by_id       = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

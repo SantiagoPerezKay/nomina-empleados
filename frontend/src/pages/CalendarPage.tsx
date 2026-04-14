@@ -306,6 +306,7 @@ export default function CalendarPage() {
                     <Table.Th>Empleado</Table.Th>
                     <Table.Th>Categoría</Table.Th>
                     <Table.Th>Hora</Table.Th>
+                    <Table.Th>Creado por</Table.Th>
                     <Table.Th>Estado</Table.Th>
                     <Table.Th>Observación</Table.Th>
                     <Table.Th>Acciones</Table.Th>
@@ -317,6 +318,7 @@ export default function CalendarPage() {
                       <Table.Td>{ev.empleado_nombre ?? `#${ev.empleado_id}`}</Table.Td>
                       <Table.Td>{ev.categoria_nombre ?? `#${ev.categoria_evento_id}`}</Table.Td>
                       <Table.Td>{ev.fecha_inicial.slice(11, 16) || '—'}</Table.Td>
+                      <Table.Td>{ev.created_by_nombre ?? '—'}</Table.Td>
                       <Table.Td>
                         <Badge color={estadoColor(ev.estado)} variant="light" size="xs">
                           {ev.estado}

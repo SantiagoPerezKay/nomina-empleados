@@ -57,7 +57,8 @@ INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomin
   ('no_realizo_tareas',     'No realizó tareas',              TRUE,  FALSE),
   ('adelanto',              'Adelanto de sueldo',             TRUE,  TRUE),
   ('charla_motivacion',     'Charla de motivación',           FALSE, FALSE),
-  ('salida_durante_horario','Salida durante horario laboral', TRUE,  TRUE);
+  ('salida_durante_horario','Salida durante horario laboral', TRUE,  TRUE),
+  ('llamada_atencion',      'Llamada de atención',            FALSE, FALSE);
 
 -- ============================================================
 -- CONCEPTOS DE NOMINA (conceptos basicos para calculo)

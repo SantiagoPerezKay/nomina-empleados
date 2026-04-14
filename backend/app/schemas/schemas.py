@@ -351,10 +351,12 @@ class EventoEmpleadoOut(BaseSchema):
     google_event_id: Optional[str] = None
     horas_cantidad: Optional[Decimal] = None
     porcentaje_extra: Optional[int] = None
+    created_by_id: Optional[int] = None
     created_at: Optional[datetime] = None
     empleado_nombre: Optional[str] = None
     categoria_nombre: Optional[str] = None
     sucursal_nombre: Optional[str] = None
+    created_by_nombre: Optional[str] = None
 
 class AprobarEventoRequest(BaseSchema):
     justificado: bool = True

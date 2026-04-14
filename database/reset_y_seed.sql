@@ -59,7 +59,8 @@ INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomin
   ('VACACIONES', 'Vacaciones', true, false, true),
   ('TARDANZA', 'Llegada tarde', false, false, true),
   ('HE_EXTRA', 'Horas extras', true, true, true),
-  ('LIC_MED', 'Licencia médica', true, false, true);
+  ('LIC_MED', 'Licencia médica', true, false, true),
+  ('LLAMADA_ATENCION', 'Llamada de atención', false, false, true);
 
 -- ── 7. CONCEPTOS DE NÓMINA ──────────────────────────────────────────────
 INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, porcentaje, monto_fijo, activo) VALUES

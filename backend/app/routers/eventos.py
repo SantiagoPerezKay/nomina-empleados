@@ -16,7 +16,7 @@ router = APIRouter(prefix="/eventos", tags=["Eventos"])
 
 
 async def _enrich_evento(ev: EventoEmpleado, db: AsyncSession) -> dict:
-    """Agrega empleado_nombre, categoria_nombre y sucursal_nombre."""
+    """Agrega empleado_nombre, categoria_nombre, sucursal_nombre, created_by_nombre."""
     from app.models.models import Sucursal
     data = {c.name: getattr(ev, c.name) for c in ev.__table__.columns}
     emp = await db.get(Empleado, ev.empleado_id) if ev.empleado_id else None
@@ -25,6 +25,19 @@ async def _enrich_evento(ev: EventoEmpleado, db: AsyncSession) -> dict:
     data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}" if emp else None
     data["categoria_nombre"] = cat.nombre if cat else None
     data["sucursal_nombre"] = suc.nombre if suc else None
+
+    created_by_nombre = None
+    if getattr(ev, "created_by_id", None):
+        u = await db.get(Usuario, ev.created_by_id)
+        if u:
+            # Preferir nombre del empleado asociado si existe, sino email
+            if u.empleado_id:
+                u_emp = await db.get(Empleado, u.empleado_id)
+                if u_emp:
+                    created_by_nombre = f"{u_emp.apellido}, {u_emp.nombre}"
+            if not created_by_nombre:
+                created_by_nombre = u.email
+    data["created_by_nombre"] = created_by_nombre
     return data
 
 
@@ -101,7 +114,7 @@ async def historial(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_c
 async def crear(
     body: EventoEmpleadoCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_roles("superadmin", "admin", "rrhh")),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "rrhh")),
 ):
     cat = await db.get(CategoriaEvento, body.categoria_evento_id)
     if not cat:
@@ -122,7 +135,7 @@ async def crear(
             if dias > dias_max:
                 raise HTTPException(400, f"Solicita {dias} días, corresponden {dias_max} según antigüedad")
 
-    e = EventoEmpleado(**body.model_dump())
+    e = EventoEmpleado(**body.model_dump(), created_by_id=current_user.id)
     db.add(e)
     await db.flush()
 
@@ -135,7 +148,7 @@ async def crear(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    return e
+    return await _enrich_evento(e, db)
 
 
 @router.patch("/{id}", response_model=EventoEmpleadoOut)
