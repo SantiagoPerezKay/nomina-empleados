@@ -111,8 +111,15 @@ export default function EmpleadoDetallePage() {
       asignacionForm.reset()
       closeAsignacion()
     },
-    onError: () => {
-      notifications.show({ message: 'Error al asignar horario', color: 'red' })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail ?? 'Error al asignar horario'
+      notifications.show({
+        title: 'No se pudo asignar',
+        message: detail,
+        color: 'red',
+        autoClose: 8000,
+      })
     },
   })
 

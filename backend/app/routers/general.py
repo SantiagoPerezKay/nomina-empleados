@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -158,6 +158,70 @@ async def eliminar_turno(id: int, db: AsyncSession = Depends(get_db),
 @turnos_router.post("/asignaciones", response_model=AsignacionTurnoOut, status_code=201)
 async def asignar_turno(body: AsignacionTurnoCreate, db: AsyncSession = Depends(get_db),
                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    # Validar que el turno destino exista
+    turno_nuevo = await db.get(Turno, body.turno_id)
+    if not turno_nuevo:
+        raise HTTPException(404, "Turno no encontrado")
+
+    # Traer todas las asignaciones existentes del empleado
+    r_exist = await db.execute(
+        select(AsignacionTurno).where(AsignacionTurno.empleado_id == body.empleado_id)
+    )
+    existentes = r_exist.scalars().all()
+
+    def _rangos_fechas_solapan(d1_ini, d1_fin, d2_ini, d2_fin) -> bool:
+        """Dos rangos [d_ini, d_fin] solapan si d1_ini <= d2_fin y d2_ini <= d1_fin.
+        fin=None significa 'abierto' (se trata como infinito)."""
+        if d1_fin is None and d2_fin is None:
+            return True
+        if d1_fin is None:
+            return d1_ini <= d2_fin
+        if d2_fin is None:
+            return d2_ini <= d1_fin
+        return d1_ini <= d2_fin and d2_ini <= d1_fin
+
+    def _dias_solapan(d1, d2) -> bool:
+        """dia_semana solapa si son iguales, o alguno es None (=todos los días)."""
+        return d1 is None or d2 is None or d1 == d2
+
+    def _horas_solapan(t1_ini, t1_fin, t2_ini, t2_fin) -> bool:
+        """Turnos cruzan medianoche si fin <= ini; para simplicidad comparamos como
+        intervalos [ini, fin). Si cruza medianoche, lo tratamos como (ini→24) ∪ (0→fin)."""
+        def _intervalos(ini, fin):
+            if fin <= ini:  # cruza medianoche
+                return [(ini, datetime.max.time().replace(hour=23, minute=59, second=59)),
+                        (datetime.min.time(), fin)]
+            return [(ini, fin)]
+        for a_ini, a_fin in _intervalos(t1_ini, t1_fin):
+            for b_ini, b_fin in _intervalos(t2_ini, t2_fin):
+                if a_ini < b_fin and b_ini < a_fin:
+                    return True
+        return False
+
+    for ex in existentes:
+        # ¿Los rangos de fecha se pisan?
+        if not _rangos_fechas_solapan(
+            body.fecha_desde, body.fecha_hasta, ex.fecha_desde, ex.fecha_hasta
+        ):
+            continue
+        # ¿Comparten día de la semana?
+        if not _dias_solapan(body.dia_semana, ex.dia_semana):
+            continue
+        # ¿Las horas del turno se pisan?
+        turno_ex = await db.get(Turno, ex.turno_id)
+        if not turno_ex:
+            continue
+        if _horas_solapan(
+            turno_nuevo.hora_entrada, turno_nuevo.hora_salida,
+            turno_ex.hora_entrada, turno_ex.hora_salida,
+        ):
+            raise HTTPException(
+                400,
+                f"El horario se superpone con otra asignación del empleado: "
+                f"'{turno_ex.nombre}' ({turno_ex.hora_entrada.strftime('%H:%M')}-"
+                f"{turno_ex.hora_salida.strftime('%H:%M')})."
+            )
+
     a = AsignacionTurno(**body.model_dump())
     db.add(a); await db.commit(); await db.refresh(a); return a
 
@@ -376,7 +440,6 @@ async def crear_periodo(body: PeriodoNominaCreate, db: AsyncSession = Depends(ge
 @periodos_router.post("/{id}/cerrar", response_model=PeriodoNominaOut)
 async def cerrar_periodo(id: int, db: AsyncSession = Depends(get_db),
                           current_user: Usuario = Depends(require_roles("superadmin", "liquidador"))):
-    from datetime import datetime
     p = await db.get(PeriodoNomina, id)
     if not p: raise HTTPException(404, "Período no encontrado")
     if p.cerrado: raise HTTPException(400, "El período ya está cerrado")
