@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Stack, Title, Group, Button, Select, Table, Badge,
   Modal, Textarea, Text, Card, ActionIcon, Tooltip,
-  Box, SimpleGrid, UnstyledButton, TextInput,
+  Box, SimpleGrid, UnstyledButton, TextInput, HoverCard, Divider,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
@@ -229,7 +229,7 @@ export default function CalendarPage() {
             const isSelected = selectedDate && isSameDay(day, selectedDate)
             const isCurrentDay = isToday(day)
 
-            return (
+            const cellContent = (
               <UnstyledButton
                 key={key}
                 onClick={() => setSelectedDate(day)}
@@ -244,6 +244,7 @@ export default function CalendarPage() {
                     : undefined,
                   minHeight: 80,
                   opacity: isCurrentMonth ? 1 : 0.35,
+                  width: '100%',
                 }}
               >
                 <Text
@@ -275,6 +276,59 @@ export default function CalendarPage() {
                   )}
                 </Stack>
               </UnstyledButton>
+            )
+
+            if (dayEvents.length === 0) return <Box key={key}>{cellContent}</Box>
+
+            return (
+              <HoverCard
+                key={key}
+                width={260}
+                shadow="md"
+                withArrow
+                openDelay={180}
+                closeDelay={80}
+                position="right"
+                withinPortal
+              >
+                <HoverCard.Target>{cellContent}</HoverCard.Target>
+                <HoverCard.Dropdown p="sm">
+                  <Text fw={600} size="sm" mb={6}>
+                    {format(day, "d 'de' MMMM", { locale: es })}
+                    <Text span c="dimmed" fw={400}> · {dayEvents.length} evento{dayEvents.length !== 1 ? 's' : ''}</Text>
+                  </Text>
+                  <Divider mb={8} />
+                  <Stack gap={8}>
+                    {dayEvents.map((ev) => (
+                      <Box key={ev.id}>
+                        <Group justify="space-between" wrap="nowrap" gap={6}>
+                          <Text size="xs" fw={600} truncate style={{ flex: 1 }}>
+                            {ev.empleado_nombre ?? `#${ev.empleado_id}`}
+                          </Text>
+                          <Badge
+                            color={estadoColor(ev.estado)}
+                            variant="light"
+                            size="xs"
+                            style={{ flexShrink: 0 }}
+                          >
+                            {ev.estado}
+                          </Badge>
+                        </Group>
+                        <Text size="xs" c="dimmed" mt={2}>
+                          {ev.categoria_nombre ?? `Cat. #${ev.categoria_evento_id}`}
+                          {ev.horas_cantidad ? ` · ${Number(ev.horas_cantidad).toFixed(1)}h` : ''}
+                          {ev.porcentaje_extra ? ` (${ev.porcentaje_extra}%)` : ''}
+                        </Text>
+                        {ev.observacion && (
+                          <Text size="xs" c="dimmed" fs="italic" lineClamp={1}>
+                            {ev.observacion}
+                          </Text>
+                        )}
+                      </Box>
+                    ))}
+                  </Stack>
+                </HoverCard.Dropdown>
+              </HoverCard>
             )
           })}
         </SimpleGrid>
