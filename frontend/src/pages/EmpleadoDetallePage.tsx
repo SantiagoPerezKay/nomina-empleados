@@ -11,14 +11,14 @@ import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconArrowLeft, IconPlus, IconTrash, IconSettings } from '@tabler/icons-react'
+import { IconArrowLeft, IconPlus, IconTrash, IconSettings, IconClock } from '@tabler/icons-react'
 import { format } from 'date-fns'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
   getNominasEmpleado, createContrato,
 } from '../api/empleados'
-import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato } from '../api/general'
-import type { AsignacionTurnoCreate } from '../types'
+import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato, getHorasExtras, createHorasExtras, deleteHorasExtras } from '../api/general'
+import type { AsignacionTurnoCreate, HorasExtrasCreate } from '../types'
 
 const hoy = () => format(new Date(), 'yyyy-MM-dd')
 
@@ -32,6 +32,13 @@ const DIAS_SEMANA = [
   { value: '6', label: 'Sábado' },
   { value: '7', label: 'Domingo' },
 ]
+
+const hsExtrasSchema = z.object({
+  fecha: z.string().min(1, 'Requerido'),
+  horas_cantidad: z.coerce.number().positive('Debe ser mayor a 0'),
+  porcentaje: z.coerce.number().refine(v => v === 50 || v === 100, 'Debe ser 50 o 100'),
+  observacion: z.string().optional(),
+})
 
 const asignacionSchema = z.object({
   turno_id: z.coerce.number().min(1, 'Requerido'),
@@ -58,6 +65,7 @@ export default function EmpleadoDetallePage() {
   const [contratoOpened, { open: openContrato, close: closeContrato }] = useDisclosure()
 
   const [asignacionOpened, { open: openAsignacion, close: closeAsignacion }] = useDisclosure()
+  const [hsExtrasOpened, { open: openHsExtras, close: closeHsExtras }] = useDisclosure()
   const [conceptosOpened, { open: openConceptos, close: closeConceptos }] = useDisclosure()
   const [conceptoContratoId, setConceptoContratoId] = useState<number | null>(null)
   const [, setSelectedConceptos] = useState<number[]>([])
@@ -68,6 +76,7 @@ export default function EmpleadoDetallePage() {
   // Asistencias automáticas — no se consultan
   const { data: nominas } = useQuery({ queryKey: ['empleado-nominas', empId], queryFn: () => getNominasEmpleado(empId) })
   const { data: asignaciones } = useQuery({ queryKey: ['empleado-asignaciones', empId], queryFn: () => getAsignacionesTurno(empId) })
+  const { data: hsExtras } = useQuery({ queryKey: ['empleado-hs-extras', empId], queryFn: () => getHorasExtras(empId) })
   const { data: turnos } = useQuery({ queryKey: ['turnos'], queryFn: getTurnos })
   const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
   const { data: allConceptos } = useQuery({ queryKey: ['conceptos'], queryFn: getConceptos })
@@ -129,9 +138,36 @@ export default function EmpleadoDetallePage() {
       qc.invalidateQueries({ queryKey: ['empleado-asignaciones', empId] })
       notifications.show({ message: 'Asignación eliminada', color: 'orange' })
     },
-    onError: () => {
-      notifications.show({ message: 'Error al eliminar asignación', color: 'red' })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail ?? 'Error al eliminar la asignación de horario'
+      notifications.show({
+        title: 'No se pudo eliminar',
+        message: typeof detail === 'string' ? detail : JSON.stringify(detail),
+        color: 'red',
+        autoClose: 8000,
+      })
     },
+  })
+
+  const hsExtrasMutation = useMutation({
+    mutationFn: (data: HorasExtrasCreate) => createHorasExtras(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-hs-extras', empId] })
+      notifications.show({ message: 'Horas extras registradas', color: 'green' })
+      hsExtrasForm.reset()
+      closeHsExtras()
+    },
+    onError: () => notifications.show({ message: 'Error al registrar', color: 'red' }),
+  })
+
+  const deleteHsExtrasMutation = useMutation({
+    mutationFn: (id: number) => deleteHorasExtras(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-hs-extras', empId] })
+      notifications.show({ message: 'Registro eliminado', color: 'orange' })
+    },
+    onError: () => notifications.show({ message: 'Error al eliminar', color: 'red' }),
   })
 
   // conceptosMutation y openConceptosModal se usan dentro del modal directamente
@@ -148,6 +184,53 @@ export default function EmpleadoDetallePage() {
     resolver: zodResolver(asignacionSchema) as any,
     defaultValues: { fecha_desde: hoy(), dia_semana: 0 },
   })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hsExtrasForm = useForm<z.infer<typeof hsExtrasSchema>>({
+    resolver: zodResolver(hsExtrasSchema) as any,
+    defaultValues: { fecha: hoy(), porcentaje: 50 },
+  })
+
+  // ── Estadísticas de horas extras ───────────────────────────────────────────
+  const HS_EXTRA_CODIGOS = ['horas_extras', 'HE_EXTRA', 'HORAS_EXTRAS', 'hs_extras', 'HE']
+  const isHsExtra = (ev: { categoria_nombre?: string | null; horas_cantidad?: number | string | null }) => {
+    // Usamos horas_cantidad como señal principal; fallback al nombre de categoría
+    if (ev.horas_cantidad != null && Number(ev.horas_cantidad) > 0) return true
+    const nom = (ev.categoria_nombre ?? '').toLowerCase().replace(/[_\s]/g, '')
+    return HS_EXTRA_CODIGOS.some(c => nom.includes(c.toLowerCase().replace(/[_\s]/g, '')))
+  }
+
+  const hsExtrasStats = (() => {
+    const eventosHE = (eventos ?? []).filter(isHsExtra)
+    const ahora = new Date()
+    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
+
+    let total = 0, total50 = 0, total100 = 0
+    let mes = 0, mes50 = 0, mes100 = 0
+    let aprobadas = 0, pendientes = 0
+
+    for (const ev of eventosHE) {
+      const hs = Number(ev.horas_cantidad ?? 0)
+      if (!hs) continue
+      const pct = ev.porcentaje_extra ?? 50
+      const fecha = new Date(ev.fecha_inicial)
+
+      total += hs
+      if (pct === 100) total100 += hs
+      else total50 += hs
+
+      if (fecha >= inicioMes) {
+        mes += hs
+        if (pct === 100) mes100 += hs
+        else mes50 += hs
+      }
+
+      if (ev.estado === 'aprobado') aprobadas += hs
+      else if (ev.estado === 'sin_revisar') pendientes += hs
+    }
+
+    return { total, total50, total100, mes, mes50, mes100, aprobadas, pendientes, cantidad: eventosHE.length }
+  })()
 
   // Calcular antigüedad y vacaciones según régimen argentino (LCT art. 150)
   const calcAntiguedad = () => {
@@ -211,10 +294,56 @@ export default function EmpleadoDetallePage() {
         </Group>
       </Card>
 
+      {/* Tarjeta de horas extras */}
+      <Card withBorder p="sm" radius="md">
+        <Group justify="space-between" align="center" mb="xs">
+          <Text fw={600} size="sm">Horas extras</Text>
+          <Text size="xs" c="dimmed">{hsExtrasStats.cantidad} evento(s) registrado(s)</Text>
+        </Group>
+        <Group gap="xl" wrap="wrap">
+          <Stack gap={0}>
+            <Text size="xs" c="dimmed">Mes actual</Text>
+            <Group gap={6} align="baseline">
+              <Text fw={700} size="lg">{hsExtrasStats.mes.toFixed(2)}h</Text>
+              {hsExtrasStats.mes50 > 0 && (
+                <Badge color="teal" variant="light" size="xs">{hsExtrasStats.mes50.toFixed(2)}h 50%</Badge>
+              )}
+              {hsExtrasStats.mes100 > 0 && (
+                <Badge color="grape" variant="light" size="xs">{hsExtrasStats.mes100.toFixed(2)}h 100%</Badge>
+              )}
+            </Group>
+          </Stack>
+          <Stack gap={0}>
+            <Text size="xs" c="dimmed">Total histórico</Text>
+            <Group gap={6} align="baseline">
+              <Text fw={700} size="lg">{hsExtrasStats.total.toFixed(2)}h</Text>
+              {hsExtrasStats.total50 > 0 && (
+                <Badge color="teal" variant="light" size="xs">{hsExtrasStats.total50.toFixed(2)}h 50%</Badge>
+              )}
+              {hsExtrasStats.total100 > 0 && (
+                <Badge color="grape" variant="light" size="xs">{hsExtrasStats.total100.toFixed(2)}h 100%</Badge>
+              )}
+            </Group>
+          </Stack>
+          <Stack gap={0}>
+            <Text size="xs" c="dimmed">Estado</Text>
+            <Group gap={6}>
+              <Badge color="green" variant="light" size="sm">{hsExtrasStats.aprobadas.toFixed(2)}h aprob.</Badge>
+              {hsExtrasStats.pendientes > 0 && (
+                <Badge color="orange" variant="light" size="sm">{hsExtrasStats.pendientes.toFixed(2)}h pend.</Badge>
+              )}
+            </Group>
+          </Stack>
+        </Group>
+      </Card>
+
       <Tabs defaultValue="contratos">
         <Tabs.List>
           <Tabs.Tab value="contratos">Contratos ({contratos?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="horarios">Horarios ({asignaciones?.length ?? 0})</Tabs.Tab>
+          <Tabs.Tab value="hs-extras" leftSection={<IconClock size={14} />}>
+            Hs Extras ({hsExtras?.length ?? 0})
+          </Tabs.Tab>
           <Tabs.Tab value="eventos">Eventos ({eventos?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="nominas">Nóminas ({nominas?.length ?? 0})</Tabs.Tab>
         </Tabs.List>
@@ -350,34 +479,107 @@ export default function EmpleadoDetallePage() {
           </Table.ScrollContainer>
         </Tabs.Panel>
 
+        {/* Horas extras directas */}
+        <Tabs.Panel value="hs-extras" pt="sm">
+          <Group justify="space-between" mb="sm">
+            <Text size="sm" c="dimmed">
+              Horas extras asignadas directamente al empleado. Se incluyen automáticamente en el cálculo de nómina.
+            </Text>
+            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={openHsExtras}>
+              Agregar horas extras
+            </Button>
+          </Group>
+          <Table.ScrollContainer minWidth={500}>
+            <Table striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Fecha</Table.Th>
+                  <Table.Th>Horas</Table.Th>
+                  <Table.Th>Porcentaje</Table.Th>
+                  <Table.Th>Monto extra</Table.Th>
+                  <Table.Th>Observación</Table.Th>
+                  <Table.Th></Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {(hsExtras ?? []).length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={6}>
+                      <Text size="sm" c="dimmed" ta="center">Sin horas extras registradas</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {(hsExtras ?? []).map((he) => (
+                  <Table.Tr key={he.id}>
+                    <Table.Td>{he.fecha}</Table.Td>
+                    <Table.Td fw={600}>{Number(he.horas_cantidad).toFixed(2)}h</Table.Td>
+                    <Table.Td>
+                      <Badge color={he.porcentaje === 100 ? 'grape' : 'teal'} variant="light" size="sm">
+                        {he.porcentaje}%
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">x{he.porcentaje === 100 ? '2.0' : '1.5'} valor/h</Text>
+                    </Table.Td>
+                    <Table.Td>{he.observacion ?? '—'}</Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        color="red" variant="subtle" size="sm"
+                        onClick={() => deleteHsExtrasMutation.mutate(he.id)}
+                        loading={deleteHsExtrasMutation.isPending}
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Tabs.Panel>
+
         {/* Eventos */}
         <Tabs.Panel value="eventos" pt="sm">
-          <Table.ScrollContainer minWidth={500}>
+          <Table.ScrollContainer minWidth={700}>
             <Table striped>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Categoría</Table.Th>
                   <Table.Th>Fecha</Table.Th>
+                  <Table.Th>Horas</Table.Th>
+                  <Table.Th>%</Table.Th>
                   <Table.Th>Estado</Table.Th>
                   <Table.Th>Observación</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {(eventos ?? []).map((e) => (
-                  <Table.Tr key={e.id}>
-                    <Table.Td>{e.categoria_nombre ?? `Cat. #${e.categoria_evento_id}`}</Table.Td>
-                    <Table.Td>{e.fecha_inicial.slice(0, 10)}</Table.Td>
-                    <Table.Td>
-                      <Badge
-                        color={e.estado === 'aprobado' ? 'green' : e.estado === 'rechazado' ? 'red' : 'orange'}
-                        variant="light" size="xs"
-                      >
-                        {e.estado}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{e.observacion ?? '—'}</Table.Td>
-                  </Table.Tr>
-                ))}
+                {(eventos ?? []).map((e) => {
+                  const hs = e.horas_cantidad != null ? Number(e.horas_cantidad) : null
+                  const pct = e.porcentaje_extra ?? null
+                  return (
+                    <Table.Tr key={e.id}>
+                      <Table.Td>{e.categoria_nombre ?? `Cat. #${e.categoria_evento_id}`}</Table.Td>
+                      <Table.Td>{e.fecha_inicial.slice(0, 10)}</Table.Td>
+                      <Table.Td>{hs ? `${hs.toFixed(2)}h` : '—'}</Table.Td>
+                      <Table.Td>
+                        {pct ? (
+                          <Badge color={pct === 100 ? 'grape' : 'teal'} variant="light" size="xs">
+                            {pct}%
+                          </Badge>
+                        ) : '—'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge
+                          color={e.estado === 'aprobado' ? 'green' : e.estado === 'rechazado' ? 'red' : 'orange'}
+                          variant="light" size="xs"
+                        >
+                          {e.estado}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{e.observacion ?? '—'}</Table.Td>
+                    </Table.Tr>
+                  )
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -411,6 +613,40 @@ export default function EmpleadoDetallePage() {
           </Table.ScrollContainer>
         </Tabs.Panel>
       </Tabs>
+
+      {/* Modal agregar horas extras */}
+      <Modal opened={hsExtrasOpened} onClose={closeHsExtras} title="Agregar horas extras" size="sm">
+        <form onSubmit={hsExtrasForm.handleSubmit((d) => hsExtrasMutation.mutate({ ...d, empleado_id: empId } as HorasExtrasCreate))}>
+          <Stack gap="sm">
+            <TextInput
+              label="Fecha *"
+              type="date"
+              {...hsExtrasForm.register('fecha')}
+              error={hsExtrasForm.formState.errors.fecha?.message}
+            />
+            <TextInput
+              label="Cantidad de horas *"
+              type="number"
+              step="0.5"
+              min="0.5"
+              {...hsExtrasForm.register('horas_cantidad')}
+              error={hsExtrasForm.formState.errors.horas_cantidad?.message}
+            />
+            <Select
+              label="Porcentaje *"
+              data={[{ value: '50', label: '50% (simple)' }, { value: '100', label: '100% (doble)' }]}
+              value={String(hsExtrasForm.watch('porcentaje') ?? 50)}
+              onChange={(v) => hsExtrasForm.setValue('porcentaje', Number(v) as 50 | 100)}
+              error={hsExtrasForm.formState.errors.porcentaje?.message}
+            />
+            <TextInput
+              label="Observación"
+              {...hsExtrasForm.register('observacion')}
+            />
+            <Button type="submit" loading={hsExtrasMutation.isPending}>Guardar</Button>
+          </Stack>
+        </form>
+      </Modal>
 
       {/* Modal asignar horario */}
       <Modal opened={asignacionOpened} onClose={closeAsignacion} title="Asignar horario" size="sm">

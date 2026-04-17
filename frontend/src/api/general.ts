@@ -7,6 +7,7 @@ import type {
   ConceptoNomina, ConceptoNominaCreate,
   Encargado, EncargadoCreate,
   AsignacionTurno, AsignacionTurnoCreate,
+  HorasExtras, HorasExtrasCreate,
 } from '../types'
 
 // Sucursales
@@ -59,3 +60,10 @@ export const getEncargados = async () => (await client.get<Encargado[]>('/encarg
 export const createEncargado = async (d: EncargadoCreate) => (await client.post<Encargado>('/encargados', d)).data
 export const updateEncargado = async (id: number, d: Partial<EncargadoCreate>) => (await client.put<Encargado>(`/encargados/${id}`, d)).data
 export const deleteEncargado = async (id: number) => { await client.delete(`/encargados/${id}`) }
+
+// Horas extras directas
+export const getHorasExtras = async (empleado_id?: number) =>
+  (await client.get<HorasExtras[]>('/horas-extras', { params: { empleado_id } })).data
+export const createHorasExtras = async (d: HorasExtrasCreate) =>
+  (await client.post<HorasExtras>('/horas-extras', d)).data
+export const deleteHorasExtras = async (id: number) => { await client.delete(`/horas-extras/${id}`) }

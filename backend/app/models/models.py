@@ -241,6 +241,17 @@ class NominaDetalle(Base):
     created_at      = Column(DateTime, default=datetime.utcnow)
 
 
+class HorasExtras(Base):
+    __tablename__ = "horas_extras"
+    id              = Column(Integer, primary_key=True)
+    empleado_id     = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    fecha           = Column(Date, nullable=False)
+    horas_cantidad  = Column(Numeric(6, 2), nullable=False)
+    porcentaje      = Column(Integer, nullable=False)  # 50 o 100
+    observacion     = Column(Text, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
 class Asistencia(Base):
     __tablename__ = "asistencias"
     id              = Column(Integer, primary_key=True)

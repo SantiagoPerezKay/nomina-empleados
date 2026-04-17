@@ -9,7 +9,7 @@ from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     AsignacionTurno, BloqueHorario, CategoriaEgreso, CategoriaEvento,
     ConceptoContrato, ConceptoNomina, Contrato, Departamento, Encargado,
-    Feriado, PeriodoNomina, Sucursal, Turno,
+    Feriado, HorasExtras, PeriodoNomina, Sucursal, Turno,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
@@ -23,6 +23,7 @@ from app.schemas.schemas import (
     DepartamentoCreate, DepartamentoOut, DepartamentoUpdate,
     EncargadoCreate, EncargadoOut, EncargadoUpdate,
     FeriadoCreate, FeriadoOut, FeriadoUpdate,
+    HorasExtrasCreate, HorasExtrasOut, HorasExtrasUpdate,
     PeriodoNominaCreate, PeriodoNominaOut,
     SucursalCreate, SucursalOut, SucursalUpdate,
     TurnoCreate, TurnoOut, TurnoUpdate,
@@ -135,6 +136,8 @@ async def actualizar_turno(id: int, body: TurnoUpdate, db: AsyncSession = Depend
     for k, v in body.model_dump(exclude_unset=True).items(): setattr(t, k, v)
     await db.commit(); await db.refresh(t); return t
 
+# ── Rutas /asignaciones/* primero (antes de /{id} para evitar ambigüedad en FastAPI) ──
+
 @turnos_router.get("/asignaciones", response_model=list[AsignacionTurnoOut])
 async def listar_asignaciones(
     empleado_id: int | None = None,
@@ -147,13 +150,6 @@ async def listar_asignaciones(
     q = q.order_by(AsignacionTurno.fecha_desde.desc())
     r = await db.execute(q)
     return r.scalars().all()
-
-@turnos_router.delete("/{id}", status_code=204)
-async def eliminar_turno(id: int, db: AsyncSession = Depends(get_db),
-                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
-    t = await db.get(Turno, id)
-    if not t: raise HTTPException(404, "Turno no encontrado")
-    t.activo = False; await db.commit()
 
 @turnos_router.post("/asignaciones", response_model=AsignacionTurnoOut, status_code=201)
 async def asignar_turno(body: AsignacionTurnoCreate, db: AsyncSession = Depends(get_db),
@@ -231,6 +227,15 @@ async def eliminar_asignacion(id: int, db: AsyncSession = Depends(get_db),
     a = await db.get(AsignacionTurno, id)
     if not a: raise HTTPException(404, "Asignación no encontrada")
     await db.delete(a); await db.commit()
+
+# ── Rutas genéricas /{id} después de todas las rutas específicas ───────────────
+
+@turnos_router.delete("/{id}", status_code=204)
+async def eliminar_turno(id: int, db: AsyncSession = Depends(get_db),
+                          _=Depends(require_roles("superadmin", "admin", "rrhh"))):
+    t = await db.get(Turno, id)
+    if not t: raise HTTPException(404, "Turno no encontrado")
+    t.activo = False; await db.commit()
 
 @turnos_router.get("/{turno_id}/bloques", response_model=list[BloqueHorarioOut])
 async def listar_bloques(turno_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
@@ -555,3 +560,62 @@ async def eliminar_feriado(id: int, db: AsyncSession = Depends(get_db),
     f = await db.get(Feriado, id)
     if not f: raise HTTPException(404, "Feriado no encontrado")
     await db.delete(f); await db.commit()
+
+
+# ─── HORAS EXTRAS ─────────────────────────────────────────────────────────────
+
+hs_extras_router = APIRouter(prefix="/horas-extras", tags=["Horas Extras"])
+
+@hs_extras_router.get("", response_model=list[HorasExtrasOut])
+async def listar_hs_extras(
+    empleado_id: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    q = select(HorasExtras).order_by(HorasExtras.fecha.desc())
+    if empleado_id:
+        q = q.where(HorasExtras.empleado_id == empleado_id)
+    r = await db.execute(q)
+    return r.scalars().all()
+
+@hs_extras_router.post("", response_model=HorasExtrasOut, status_code=201)
+async def crear_hs_extras(
+    body: HorasExtrasCreate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    if body.porcentaje not in (50, 100):
+        raise HTTPException(400, "El porcentaje debe ser 50 o 100")
+    he = HorasExtras(**body.model_dump())
+    db.add(he)
+    await db.commit()
+    await db.refresh(he)
+    return he
+
+@hs_extras_router.put("/{id}", response_model=HorasExtrasOut)
+async def actualizar_hs_extras(
+    id: int,
+    body: HorasExtrasUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    he = await db.get(HorasExtras, id)
+    if not he: raise HTTPException(404, "Registro no encontrado")
+    if body.porcentaje is not None and body.porcentaje not in (50, 100):
+        raise HTTPException(400, "El porcentaje debe ser 50 o 100")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(he, k, v)
+    await db.commit()
+    await db.refresh(he)
+    return he
+
+@hs_extras_router.delete("/{id}", status_code=204)
+async def eliminar_hs_extras(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    he = await db.get(HorasExtras, id)
+    if not he: raise HTTPException(404, "Registro no encontrado")
+    await db.delete(he)
+    await db.commit()

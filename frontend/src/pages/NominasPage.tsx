@@ -85,10 +85,13 @@ export default function NominasPage() {
   })
 
   const periodoActual = periodos?.find(p => p.id === selectedPeriodo)
-  const totalNeto = (nominas ?? []).reduce((sum, n) => sum + n.neto_a_pagar, 0)
+  const totalNeto = (nominas ?? []).reduce((sum, n) => sum + Number(n.neto_a_pagar ?? 0), 0)
 
-  const formatMoney = (n: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
+  const formatMoney = (n: number | string | null | undefined) => {
+    const num = Number(n ?? 0)
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+      .format(Number.isFinite(num) ? num : 0)
+  }
 
   return (
     <Stack gap="md">

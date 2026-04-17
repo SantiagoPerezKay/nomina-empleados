@@ -375,6 +375,31 @@ class EventoHistorialOut(BaseSchema):
     created_at: datetime
 
 
+# ─── HORAS EXTRAS ─────────────────────────────────────────────────────────────
+
+class HorasExtrasCreate(BaseSchema):
+    empleado_id: int
+    fecha: date
+    horas_cantidad: Decimal
+    porcentaje: int      # 50 o 100
+    observacion: Optional[str] = None
+
+class HorasExtrasUpdate(BaseSchema):
+    fecha: Optional[date] = None
+    horas_cantidad: Optional[Decimal] = None
+    porcentaje: Optional[int] = None
+    observacion: Optional[str] = None
+
+class HorasExtrasOut(BaseSchema):
+    id: int
+    empleado_id: int
+    fecha: date
+    horas_cantidad: Decimal
+    porcentaje: int
+    observacion: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 # ─── ASISTENCIAS ───────────────────────────────────────────────────────────────
 
 class AsistenciaCreate(BaseSchema):

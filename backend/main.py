@@ -19,6 +19,7 @@ from app.routers.general import (
     departamentos_router,
     encargados_router,
     feriados_router,
+    hs_extras_router,
     periodos_router,
     sucursales_router,
     turnos_router,
@@ -41,6 +42,34 @@ STARTUP_MIGRATIONS = [
     """UPDATE categorias_evento
           SET afecta_nomina = false
         WHERE codigo IN ('llegada_tarde', 'TARDANZA', 'tardanza', 'LLEGADA_TARDE')""",
+    # Columnas para horas extras en eventos (por si el 08_split_shifts.sql no se aplicó)
+    """ALTER TABLE eventos_empleados
+       ADD COLUMN IF NOT EXISTS horas_cantidad NUMERIC(6,2) NULL""",
+    """ALTER TABLE eventos_empleados
+       ADD COLUMN IF NOT EXISTS porcentaje_extra SMALLINT NULL""",
+    # Categoría de horas extras (si no existe)
+    """INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina, activo)
+       VALUES ('horas_extras', 'Horas extras', true, true, true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    # Conceptos de nómina para horas extras (idempotente)
+    """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
+       VALUES ('horas_extras_50', 'Horas extras 50%', 'ingreso', 'horas_extras', true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
+       VALUES ('horas_extras_100', 'Horas extras 100%', 'ingreso', 'horas_extras', true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    # Tabla de horas extras directas (sin pasar por eventos)
+    """CREATE TABLE IF NOT EXISTS horas_extras (
+       id SERIAL PRIMARY KEY,
+       empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+       fecha DATE NOT NULL,
+       horas_cantidad NUMERIC(6,2) NOT NULL,
+       porcentaje SMALLINT NOT NULL,
+       observacion TEXT,
+       created_at TIMESTAMP DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_horas_extras_empleado
+       ON horas_extras(empleado_id, fecha)""",
 ]
 
 
@@ -88,6 +117,7 @@ app.include_router(cat_egreso_router, prefix="/api")
 app.include_router(cat_evento_router, prefix="/api")
 app.include_router(conceptos_router, prefix="/api")
 app.include_router(feriados_router, prefix="/api")
+app.include_router(hs_extras_router, prefix="/api")
 
 
 @app.get("/", tags=["Health"])

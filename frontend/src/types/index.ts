@@ -99,6 +99,8 @@ export interface EventoEmpleado {
   estado: 'sin_revisar' | 'aprobado' | 'rechazado' | 'actualizado'
   justificado: boolean
   motivo_actualizacion: string | null
+  horas_cantidad?: number | string | null
+  porcentaje_extra?: number | null
   created_by_id?: number | null
   created_at?: string | null
   empleado_nombre?: string; categoria_nombre?: string; sucursal_nombre?: string
@@ -108,6 +110,8 @@ export interface EventoCreate {
   empleado_id: number; categoria_evento_id: number
   fecha_inicial: string; fecha_final?: string
   sucursal_id?: number; encargado_id?: number; observacion?: string
+  horas_cantidad?: number
+  porcentaje_extra?: number
 }
 export interface AprobarEventoRequest { justificado?: boolean }
 export interface RechazarEventoRequest { motivo: string }
@@ -197,6 +201,24 @@ export interface ReporteVacaciones {
   sucursal: string | null; fecha_ingreso: string
   antiguedad_anios: number; dias_correspondientes: number
   dias_tomados: number; dias_pendientes: number
+}
+
+// ── Horas Extras ──────────────────────────────────────────────────────────────
+export interface HorasExtras {
+  id: number
+  empleado_id: number
+  fecha: string
+  horas_cantidad: number
+  porcentaje: 50 | 100
+  observacion: string | null
+  created_at?: string | null
+}
+export interface HorasExtrasCreate {
+  empleado_id: number
+  fecha: string
+  horas_cantidad: number
+  porcentaje: 50 | 100
+  observacion?: string
 }
 
 // ── Asignaciones de Turno ─────────────────────────────────────────────────────

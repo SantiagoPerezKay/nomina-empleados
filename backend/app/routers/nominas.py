@@ -1,4 +1,5 @@
-from datetime import date
+import logging
+from datetime import date, datetime, time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +10,13 @@ from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     Nomina, NominaDetalle, PeriodoNomina, Contrato, Empleado,
     EventoEmpleado, CategoriaEvento, ConceptoNomina, ConceptoContrato, Feriado,
+    HorasExtras,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import NominaCreate, NominaUpdate, NominaOut, NominaDetalleCreate, NominaDetalleOut
+
+log = logging.getLogger("nominas")
+logging.basicConfig(level=logging.INFO)
 
 
 class GenerarBorradorReq(BaseModel):
@@ -49,6 +54,35 @@ async def _get_feriados_set(fecha_inicio: date, fecha_fin: date, db: AsyncSessio
         select(Feriado.fecha).where(Feriado.fecha >= fecha_inicio, Feriado.fecha <= fecha_fin)
     )
     return {row[0] for row in r.fetchall()}
+
+
+async def _get_or_create_concepto(
+    db: AsyncSession,
+    codigo_preferido: str,
+    codigos_alt: list[str],
+    nombre: str,
+    tipo: str,
+    categoria: str,
+) -> int:
+    """Busca un concepto por varios códigos posibles; si no existe, lo crea.
+
+    Devuelve el id del concepto. Nunca retorna None: garantiza que exista.
+    """
+    codigos_todos = [codigo_preferido] + codigos_alt
+    r = await db.execute(
+        select(ConceptoNomina).where(ConceptoNomina.codigo.in_(codigos_todos))
+    )
+    existente = r.scalars().first()
+    if existente:
+        return existente.id
+    # Crear con el código preferido
+    nuevo = ConceptoNomina(
+        codigo=codigo_preferido, nombre=nombre, tipo=tipo,
+        categoria=categoria, activo=True,
+    )
+    db.add(nuevo)
+    await db.flush()
+    return nuevo.id
 
 
 @router.post("/generar-borrador", response_model=NominaOut, status_code=201)
@@ -137,17 +171,23 @@ async def generar_borrador(
     # ── Feriados del período ──────────────────────────────────────────────────
     feriados_set = await _get_feriados_set(periodo.fecha_inicio, periodo.fecha_fin, db)
 
-    # ── Buscar categoría de horas extras ─────────────────────────────────────
+    # ── Buscar categoría de horas extras (cualquier variante) ───────────────
     r_cat_extra = await db.execute(
-        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["horas_extras", "HE_EXTRA"]))
+        select(CategoriaEvento).where(
+            CategoriaEvento.codigo.in_([
+                "horas_extras", "HE_EXTRA", "HORAS_EXTRAS", "hs_extras", "HE",
+            ])
+        )
     )
-    cat_extra = r_cat_extra.scalars().first()
+    cats_extra_ids = set(c.id for c in r_cat_extra.scalars().all())
 
     # ── Buscar categoría de falta injustificada ──────────────────────────────
     r_cat_falta = await db.execute(
-        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["FALTA_INJ", "falta_inj"]))
+        select(CategoriaEvento).where(
+            CategoriaEvento.codigo.in_(["FALTA_INJ", "falta_inj", "FALTA", "ausencia"])
+        )
     )
-    cat_falta_inj = r_cat_falta.scalars().first()
+    cats_falta_ids = set(c.id for c in r_cat_falta.scalars().all())
 
     # ── Regla de negocio: llegadas tarde NO afectan el cálculo de nómina ─────
     # Se registran como eventos para trazabilidad pero no generan descuentos.
@@ -159,40 +199,71 @@ async def generar_borrador(
     tarde_cat_ids = set(r_cat_tarde.scalars().all())
 
     # ── Eventos aprobados del período ─────────────────────────────────────────
+    # Usar datetime al inicio/fin del día porque fecha_inicial es TIMESTAMPTZ
+    fd = datetime.combine(periodo.fecha_inicio, time.min)
+    fh = datetime.combine(periodo.fecha_fin, time.max)
     r_ev = await db.execute(
         select(EventoEmpleado).where(
             EventoEmpleado.empleado_id == body.empleado_id,
-            EventoEmpleado.fecha_inicial >= periodo.fecha_inicio,
-            EventoEmpleado.fecha_inicial <= periodo.fecha_fin,
+            EventoEmpleado.fecha_inicial >= fd,
+            EventoEmpleado.fecha_inicial <= fh,
             EventoEmpleado.estado == "aprobado",
         )
     )
     eventos = r_ev.scalars().all()
 
-    # Conceptos de deducciones y horas extras
-    r_desc = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo.in_(["ausencia_desc", "DESC_FALTA"])))
-    concepto_desc = r_desc.scalars().first()
-    desc_id = concepto_desc.id if concepto_desc else None
+    log.info("=" * 60)
+    log.info(f"[NOMINA] Empleado #{body.empleado_id} ({empleado.apellido}, {empleado.nombre})")
+    log.info(f"[NOMINA] Período: {periodo.fecha_inicio} → {periodo.fecha_fin}")
+    log.info(f"[NOMINA] Rango query: {fd} → {fh}")
+    log.info(f"[NOMINA] Eventos aprobados encontrados: {len(eventos)}")
+    for _i, _ev in enumerate(eventos):
+        log.info(
+            f"  Evento #{_ev.id}: cat_id={_ev.categoria_evento_id}, "
+            f"fecha={_ev.fecha_inicial}, estado={_ev.estado}, "
+            f"horas_cantidad={_ev.horas_cantidad!r} (type={type(_ev.horas_cantidad).__name__}), "
+            f"porcentaje_extra={_ev.porcentaje_extra!r}"
+        )
+    log.info(f"[NOMINA] tarde_cat_ids={tarde_cat_ids}")
+    log.info(f"[NOMINA] cats_falta_ids={cats_falta_ids}")
+    log.info(f"[NOMINA] cats_extra_ids={cats_extra_ids}")
+    log.info(f"[NOMINA] valor_hora={valor_hora:.4f}")
 
-    r_ext50 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "hora_extra_50"))
-    concepto_ext50 = r_ext50.scalars().first()
-    ext50_id = concepto_ext50.id if concepto_ext50 else None
-
-    r_ext100 = await db.execute(select(ConceptoNomina).where(ConceptoNomina.codigo == "hora_extra_100"))
-    concepto_ext100 = r_ext100.scalars().first()
-    ext100_id = concepto_ext100.id if concepto_ext100 else None
+    # Conceptos: usar get-or-create para garantizar que siempre existan
+    desc_id = await _get_or_create_concepto(
+        db, "ausencia_desc", ["DESC_FALTA", "descuento_falta"],
+        "Descuento por falta", "deduccion", "ausencia",
+    )
+    ext50_id = await _get_or_create_concepto(
+        db, "horas_extras_50", ["hora_extra_50", "HE_50", "hs_extras_50"],
+        "Horas extras 50%", "ingreso", "horas_extras",
+    )
+    ext100_id = await _get_or_create_concepto(
+        db, "horas_extras_100", ["hora_extra_100", "HE_100", "hs_extras_100"],
+        "Horas extras 100%", "ingreso", "horas_extras",
+    )
+    log.info(f"[NOMINA] Conceptos: desc_id={desc_id}, ext50_id={ext50_id}, ext100_id={ext100_id}")
 
     valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * hs_por_dia
 
     for ev in eventos:
         # Skip llegadas tarde: no afectan el cálculo de nómina (regla de negocio)
         if ev.categoria_evento_id in tarde_cat_ids:
+            log.info(f"  → Evento #{ev.id}: SKIP (llegada tarde)")
             continue
 
         fecha_ev = ev.fecha_inicial.date() if hasattr(ev.fecha_inicial, 'date') else ev.fecha_inicial
 
-        # Horas extras
-        if cat_extra and ev.categoria_evento_id == cat_extra.id and ev.horas_cantidad:
+        # Horas extras: se detectan por tener horas_cantidad > 0
+        # (independiente del código de la categoría, que puede variar entre instalaciones)
+        tiene_horas = ev.horas_cantidad and float(ev.horas_cantidad) > 0
+        log.info(
+            f"  → Evento #{ev.id}: tiene_horas={tiene_horas}, "
+            f"horas_cantidad={ev.horas_cantidad!r}, "
+            f"cat_id={ev.categoria_evento_id}, "
+            f"en_falta_ids={'SI' if ev.categoria_evento_id in cats_falta_ids else 'NO'}"
+        )
+        if tiene_horas:
             horas = float(ev.horas_cantidad)
             # Determinar porcentaje: si el evento ya lo tiene, usarlo; sino auto-detectar por feriado
             if ev.porcentaje_extra:
@@ -200,32 +271,39 @@ async def generar_borrador(
             else:
                 pct = 100 if fecha_ev in feriados_set else 50
 
-            if pct == 100 and ext100_id and _concepto_permitido(ext100_id):
+            # Los conceptos de horas extras son disparados por eventos aprobados,
+            # por lo que NO se filtran por _concepto_permitido (se aplican siempre).
+            if pct == 100:
                 monto_unitario = valor_hora * 2.0
+                total = monto_unitario * horas
+                log.info(f"    ++ DETALLE HS100: {horas}h x ${monto_unitario:.2f} = ${total:.2f} (concepto_id={ext100_id})")
                 det = NominaDetalle(
                     nomina_id=nomina.id, concepto_id=ext100_id, tipo="ingreso",
                     cantidad=horas, monto_unitario=monto_unitario,
-                    monto_total=monto_unitario * horas,
+                    monto_total=total,
                     evento_id=ev.id,
                     observacion=f"Hs extras al 100% ({horas}h) {'- feriado' if fecha_ev in feriados_set else '- guardia'}",
                 )
                 db.add(det)
                 detalles.append(det)
-            elif pct == 50 and ext50_id and _concepto_permitido(ext50_id):
+            else:
                 monto_unitario = valor_hora * 1.5
+                total = monto_unitario * horas
+                log.info(f"    ++ DETALLE HS50: {horas}h x ${monto_unitario:.2f} = ${total:.2f} (concepto_id={ext50_id})")
                 det = NominaDetalle(
                     nomina_id=nomina.id, concepto_id=ext50_id, tipo="ingreso",
                     cantidad=horas, monto_unitario=monto_unitario,
-                    monto_total=monto_unitario * horas,
+                    monto_total=total,
                     evento_id=ev.id,
                     observacion=f"Hs extras al 50% ({horas}h)",
                 )
                 db.add(det)
                 detalles.append(det)
 
-        # Descuento solo por falta injustificada aprobada
-        elif (cat_falta_inj and ev.categoria_evento_id == cat_falta_inj.id
-              and desc_id and _concepto_permitido(desc_id)):
+        # Descuento solo por falta injustificada aprobada (también disparado por evento)
+        elif (cats_falta_ids and ev.categoria_evento_id in cats_falta_ids
+              and desc_id):
+            log.info(f"    ++ DETALLE FALTA: 1 x ${valor_dia:.2f} (concepto_id={desc_id})")
             det_desc = NominaDetalle(
                 nomina_id=nomina.id, concepto_id=desc_id, tipo="deduccion",
                 cantidad=1, monto_unitario=valor_dia, monto_total=valor_dia,
@@ -233,10 +311,52 @@ async def generar_borrador(
             )
             db.add(det_desc)
             detalles.append(det_desc)
+        else:
+            log.info(f"    -- Evento #{ev.id}: NO MATCH (sin horas, no es falta)")
+
+    log.info(f"[NOMINA] Total detalles de eventos: {len(detalles)}")
+
+    # ── Horas extras de la tabla horas_extras (directas, sin aprobación) ─────
+    r_he = await db.execute(
+        select(HorasExtras).where(
+            HorasExtras.empleado_id == body.empleado_id,
+            HorasExtras.fecha >= periodo.fecha_inicio,
+            HorasExtras.fecha <= periodo.fecha_fin,
+        )
+    )
+    hs_extras_directas = r_he.scalars().all()
+    log.info(f"[NOMINA] Horas extras directas en período: {len(hs_extras_directas)}")
+
+    for he in hs_extras_directas:
+        horas = float(he.horas_cantidad)
+        pct = he.porcentaje
+        if pct == 100:
+            monto_unitario = valor_hora * 2.0
+            total = monto_unitario * horas
+            log.info(f"    ++ HE_DIRECTA 100%: {horas}h x ${monto_unitario:.2f} = ${total:.2f}")
+            det = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=ext100_id, tipo="ingreso",
+                cantidad=horas, monto_unitario=monto_unitario, monto_total=total,
+                observacion=f"Hs extras 100% — {he.fecha}" + (f" ({he.observacion})" if he.observacion else ""),
+            )
+        else:
+            monto_unitario = valor_hora * 1.5
+            total = monto_unitario * horas
+            log.info(f"    ++ HE_DIRECTA 50%: {horas}h x ${monto_unitario:.2f} = ${total:.2f}")
+            det = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=ext50_id, tipo="ingreso",
+                cantidad=horas, monto_unitario=monto_unitario, monto_total=total,
+                observacion=f"Hs extras 50% — {he.fecha}" + (f" ({he.observacion})" if he.observacion else ""),
+            )
+        db.add(det)
+        detalles.append(det)
+
+    log.info(f"[NOMINA] Total detalles generados hasta ahora: {len(detalles)}")
 
     # ── Conceptos automáticos del contrato (% o monto fijo) ────────────────
     # Conceptos ya procesados arriba (por código)
     codigos_ya_procesados = {"salario_base", "ausencia_desc", "hora_extra_50", "hora_extra_100",
+                              "horas_extras_50", "horas_extras_100",
                               "SAL_BASE", "DESC_FALTA", "HE_50", "HE_100"}
     if tiene_conceptos:
         r_conceptos = await db.execute(
