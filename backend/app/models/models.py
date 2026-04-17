@@ -223,6 +223,11 @@ class Nomina(Base):
     total_deducciones = Column(Numeric(12, 2), default=0)
     neto_a_pagar      = Column(Numeric(12, 2), default=0)
     observacion       = Column(Text, nullable=True)
+    # Control de pago
+    pagado            = Column(Boolean, default=False)
+    fecha_pago        = Column(DateTime, nullable=True)
+    pagado_por_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    monto_pagado      = Column(Numeric(12, 2), nullable=True)
     created_at        = Column(DateTime, default=datetime.utcnow)
     updated_at        = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

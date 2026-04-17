@@ -51,3 +51,13 @@ export const recalcularNomina = async (id: number) => {
   const res = await client.post<Nomina>(`/nominas/${id}/recalcular`)
   return res.data
 }
+
+export const marcarPagado = async (id: number, monto_pagado?: number) => {
+  const res = await client.post<Nomina>(`/nominas/${id}/marcar-pagado`, { monto_pagado })
+  return res.data
+}
+
+export const desmarcarPagado = async (id: number) => {
+  const res = await client.post<Nomina>(`/nominas/${id}/desmarcar-pagado`)
+  return res.data
+}

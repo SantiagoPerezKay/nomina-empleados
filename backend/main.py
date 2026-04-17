@@ -58,6 +58,11 @@ STARTUP_MIGRATIONS = [
     """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
        VALUES ('horas_extras_100', 'Horas extras 100%', 'ingreso', 'horas_extras', true)
        ON CONFLICT (codigo) DO NOTHING""",
+    # Control de pago en nóminas
+    """ALTER TABLE nominas ADD COLUMN IF NOT EXISTS pagado BOOLEAN DEFAULT FALSE""",
+    """ALTER TABLE nominas ADD COLUMN IF NOT EXISTS fecha_pago TIMESTAMP NULL""",
+    """ALTER TABLE nominas ADD COLUMN IF NOT EXISTS pagado_por_id INTEGER REFERENCES usuarios(id) NULL""",
+    """ALTER TABLE nominas ADD COLUMN IF NOT EXISTS monto_pagado NUMERIC(12,2) NULL""",
     # Tabla de horas extras directas (sin pasar por eventos)
     """CREATE TABLE IF NOT EXISTS horas_extras (
        id SERIAL PRIMARY KEY,

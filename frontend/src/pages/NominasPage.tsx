@@ -3,17 +3,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Stack, Title, Group, Button, Select, Table, Badge,
   Text, Modal, TextInput, Skeleton, ActionIcon, Tooltip,
-  Alert,
+  Alert, SegmentedControl,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconPlus, IconCalculator, IconList, IconLock } from '@tabler/icons-react'
+import { IconPlus, IconCalculator, IconList, IconLock, IconCheck, IconX } from '@tabler/icons-react'
 import {
   getPeriodos, createPeriodo, calcularNomina, getNominas,
-  getDetallesNomina, cerrarPeriodo,
+  getDetallesNomina, cerrarPeriodo, marcarPagado, desmarcarPagado,
 } from '../api/nominas'
 import type { PeriodoCreate } from '../types'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -24,10 +24,13 @@ const periodoSchema = z.object({
   fecha_fin: z.string().min(1),
 })
 
+type FiltroEstado = 'todos' | 'pendientes' | 'pagados'
+
 export default function NominasPage() {
   const qc = useQueryClient()
   const [selectedPeriodo, setSelectedPeriodo] = useState<number | null>(null)
   const [detalleNominaId, setDetalleNominaId] = useState<number | null>(null)
+  const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos')
   const [periodoOpened, { open: openPeriodo, close: closePeriodo }] = useDisclosure()
 
   const { data: periodos, isLoading: loadingPeriodos } = useQuery({
@@ -47,7 +50,6 @@ export default function NominasPage() {
     enabled: detalleNominaId !== null,
   })
 
-
   const periodoMutation = useMutation({
     mutationFn: (data: PeriodoCreate) => createPeriodo(data),
     onSuccess: (p) => {
@@ -64,6 +66,7 @@ export default function NominasPage() {
       qc.invalidateQueries({ queryKey: ['nominas', selectedPeriodo] })
       notifications.show({ message: 'Nómina calculada', color: 'green' })
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (e: any) => notifications.show({ message: e?.response?.data?.detail ?? 'Error al calcular', color: 'red' }),
   })
 
@@ -73,6 +76,26 @@ export default function NominasPage() {
       qc.invalidateQueries({ queryKey: ['periodos'] })
       notifications.show({ message: 'Período cerrado', color: 'orange' })
     },
+  })
+
+  const marcarPagadoMutation = useMutation({
+    mutationFn: (id: number) => marcarPagado(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nominas', selectedPeriodo] })
+      notifications.show({ message: 'Marcado como pagado', color: 'green' })
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.detail ?? 'Error', color: 'red' }),
+  })
+
+  const desmarcarPagadoMutation = useMutation({
+    mutationFn: (id: number) => desmarcarPagado(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nominas', selectedPeriodo] })
+      notifications.show({ message: 'Marcado como pendiente', color: 'orange' })
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.detail ?? 'Error', color: 'red' }),
   })
 
   const periodoForm = useForm<z.infer<typeof periodoSchema>>({
@@ -85,13 +108,27 @@ export default function NominasPage() {
   })
 
   const periodoActual = periodos?.find(p => p.id === selectedPeriodo)
-  const totalNeto = (nominas ?? []).reduce((sum, n) => sum + Number(n.neto_a_pagar ?? 0), 0)
 
   const formatMoney = (n: number | string | null | undefined) => {
     const num = Number(n ?? 0)
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
       .format(Number.isFinite(num) ? num : 0)
   }
+
+  // Estadísticas
+  const totalNominas = nominas ?? []
+  const pagadas = totalNominas.filter(n => n.pagado)
+  const pendientes = totalNominas.filter(n => !n.pagado)
+  const totalNeto = totalNominas.reduce((s, n) => s + Number(n.neto_a_pagar ?? 0), 0)
+  const totalPagado = pagadas.reduce((s, n) => s + Number(n.monto_pagado ?? n.neto_a_pagar ?? 0), 0)
+  const totalPendiente = pendientes.reduce((s, n) => s + Number(n.neto_a_pagar ?? 0), 0)
+
+  // Filtrado
+  const nominasFiltradas = totalNominas.filter(n => {
+    if (filtroEstado === 'pagados') return n.pagado
+    if (filtroEstado === 'pendientes') return !n.pagado
+    return true
+  })
 
   return (
     <Stack gap="md">
@@ -141,17 +178,42 @@ export default function NominasPage() {
         )}
       </Group>
 
-      {selectedPeriodo && nominas && nominas.length > 0 && (
+      {selectedPeriodo && totalNominas.length > 0 && (
         <Alert color="blue" variant="light">
-          {nominas.length} empleados · Total neto: <b>{formatMoney(totalNeto)}</b>
+          <Group gap="xl" wrap="wrap">
+            <Text size="sm">
+              <b>{totalNominas.length}</b> empleados · Total: <b>{formatMoney(totalNeto)}</b>
+            </Text>
+            <Text size="sm" c="green">
+              <b>{pagadas.length}</b> pagados · <b>{formatMoney(totalPagado)}</b>
+            </Text>
+            {pendientes.length > 0 && (
+              <Text size="sm" c="orange">
+                <b>{pendientes.length}</b> pendientes · <b>{formatMoney(totalPendiente)}</b>
+              </Text>
+            )}
+          </Group>
         </Alert>
+      )}
+
+      {selectedPeriodo && totalNominas.length > 0 && (
+        <SegmentedControl
+          value={filtroEstado}
+          onChange={(v) => setFiltroEstado(v as FiltroEstado)}
+          data={[
+            { value: 'todos', label: `Todos (${totalNominas.length})` },
+            { value: 'pendientes', label: `Pendientes (${pendientes.length})` },
+            { value: 'pagados', label: `Pagados (${pagadas.length})` },
+          ]}
+          w="fit-content"
+        />
       )}
 
       {selectedPeriodo && (
         loadingNominas ? (
           <Skeleton h={300} />
         ) : (
-          <Table.ScrollContainer minWidth={700}>
+          <Table.ScrollContainer minWidth={750}>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -160,35 +222,74 @@ export default function NominasPage() {
                   <Table.Th>Total ingresos</Table.Th>
                   <Table.Th>Deducciones</Table.Th>
                   <Table.Th>Neto a pagar</Table.Th>
+                  <Table.Th>Estado pago</Table.Th>
+                  <Table.Th>Fecha pago</Table.Th>
                   <Table.Th />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {(nominas ?? []).length === 0 && (
+                {nominasFiltradas.length === 0 && (
                   <Table.Tr>
-                    <Table.Td colSpan={6}>
+                    <Table.Td colSpan={8}>
                       <Text c="dimmed" ta="center">
-                        Sin nóminas — haz clic en "Calcular nómina"
+                        {totalNominas.length === 0
+                          ? 'Sin nóminas — hacé clic en "Calcular nómina"'
+                          : 'Sin resultados para el filtro seleccionado'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
                 )}
-                {(nominas ?? []).map((n) => (
-                  <Table.Tr key={n.id}>
-                    <Table.Td>{n.empleado_nombre ?? `Empleado #${n.empleado_id}`}</Table.Td>
+                {nominasFiltradas.map((n) => (
+                  <Table.Tr key={n.id} bg={n.pagado ? 'var(--mantine-color-green-0)' : undefined}>
+                    <Table.Td fw={500}>{n.empleado_nombre ?? `Empleado #${n.empleado_id}`}</Table.Td>
                     <Table.Td>{formatMoney(n.salario_base)}</Table.Td>
                     <Table.Td>{formatMoney(n.total_ingresos)}</Table.Td>
                     <Table.Td>{formatMoney(n.total_deducciones)}</Table.Td>
                     <Table.Td fw={700}>{formatMoney(n.neto_a_pagar)}</Table.Td>
                     <Table.Td>
-                      <Tooltip label="Ver detalles">
-                        <ActionIcon
-                          variant="subtle"
-                          onClick={() => setDetalleNominaId(n.id)}
-                        >
-                          <IconList size={16} />
-                        </ActionIcon>
-                      </Tooltip>
+                      {n.pagado ? (
+                        <Badge color="green" variant="filled" size="sm">Pagado</Badge>
+                      ) : (
+                        <Badge color="orange" variant="light" size="sm">Pendiente</Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {n.fecha_pago
+                        ? <Text size="xs">{new Date(n.fecha_pago).toLocaleDateString('es-AR')}</Text>
+                        : <Text size="xs" c="dimmed">—</Text>}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap={4} wrap="nowrap">
+                        {!n.pagado ? (
+                          <Tooltip label="Marcar como pagado">
+                            <ActionIcon
+                              color="green" variant="light" size="sm"
+                              onClick={() => marcarPagadoMutation.mutate(n.id)}
+                              loading={marcarPagadoMutation.isPending}
+                            >
+                              <IconCheck size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip label="Desmarcar pago">
+                            <ActionIcon
+                              color="orange" variant="subtle" size="sm"
+                              onClick={() => desmarcarPagadoMutation.mutate(n.id)}
+                              loading={desmarcarPagadoMutation.isPending}
+                            >
+                              <IconX size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        <Tooltip label="Ver detalles">
+                          <ActionIcon
+                            variant="subtle" size="sm"
+                            onClick={() => setDetalleNominaId(n.id)}
+                          >
+                            <IconList size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}

@@ -639,3 +639,44 @@ async def recalcular(
         raise HTTPException(404, "Nómina no encontrada")
     await _recalcular_y_guardar(n, db)
     return n
+
+
+class MarcarPagadoReq(BaseModel):
+    monto_pagado: float | None = None
+
+
+@router.post("/{id}/marcar-pagado", response_model=NominaOut)
+async def marcar_pagado(
+    id: int,
+    body: MarcarPagadoReq = MarcarPagadoReq(),
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    n = await db.get(Nomina, id)
+    if not n:
+        raise HTTPException(404, "Nómina no encontrada")
+    n.pagado = True
+    n.fecha_pago = datetime.utcnow()
+    n.pagado_por_id = current_user.id
+    n.monto_pagado = body.monto_pagado if body.monto_pagado is not None else n.neto_a_pagar
+    await db.commit()
+    await db.refresh(n)
+    return await _enrich_nomina(n, db)
+
+
+@router.post("/{id}/desmarcar-pagado", response_model=NominaOut)
+async def desmarcar_pagado(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    _: Usuario = Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    n = await db.get(Nomina, id)
+    if not n:
+        raise HTTPException(404, "Nómina no encontrada")
+    n.pagado = False
+    n.fecha_pago = None
+    n.pagado_por_id = None
+    n.monto_pagado = None
+    await db.commit()
+    await db.refresh(n)
+    return await _enrich_nomina(n, db)

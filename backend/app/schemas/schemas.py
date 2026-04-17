@@ -527,6 +527,10 @@ class NominaOut(BaseSchema):
     total_deducciones: Optional[Decimal] = None
     neto_a_pagar: Optional[Decimal] = None
     observacion: Optional[str] = None
+    pagado: bool = False
+    fecha_pago: Optional[datetime] = None
+    pagado_por_id: Optional[int] = None
+    monto_pagado: Optional[Decimal] = None
     empleado_nombre: Optional[str] = None
     periodo_label: Optional[str] = None
     created_at: Optional[datetime] = None
