@@ -287,10 +287,10 @@ export default function EventosPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Empleado</Table.Th>
+                <Table.Th>Creado por</Table.Th>
                 <Table.Th>Categoría</Table.Th>
                 <Table.Th>Fecha</Table.Th>
                 <Table.Th>Sucursal</Table.Th>
-                <Table.Th>Creado por</Table.Th>
                 <Table.Th>Estado</Table.Th>
                 <Table.Th>Observación</Table.Th>
                 <Table.Th>Acciones</Table.Th>
@@ -303,10 +303,12 @@ export default function EventosPage() {
               {(eventos ?? []).map((e) => (
                 <Table.Tr key={e.id}>
                   <Table.Td>{e.empleado_nombre ?? `#${e.empleado_id}`}</Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">{e.created_by_nombre ?? '—'}</Text>
+                  </Table.Td>
                   <Table.Td>{e.categoria_nombre ?? `#${e.categoria_evento_id}`}</Table.Td>
                   <Table.Td>{e.fecha_inicial.slice(0, 10)}</Table.Td>
                   <Table.Td>{e.sucursal_nombre ?? '—'}</Table.Td>
-                  <Table.Td>{e.created_by_nombre ?? '—'}</Table.Td>
                   <Table.Td>
                     <Badge color={estadoColor(e.estado)} variant="light" size="xs">{e.estado}</Badge>
                   </Table.Td>

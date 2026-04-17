@@ -1,4 +1,4 @@
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { Link, useLocation, Outlet, Navigate } from 'react-router-dom'
 import {
   AppShell, NavLink, Group, Text, Avatar,
   Menu, Burger, ScrollArea, ActionIcon, Tooltip,
@@ -14,15 +14,32 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { useColorSchemeStore } from '../stores/colorScheme'
 
-const navItems = [
-  { label: 'Dashboard', icon: IconDashboard, to: '/' },
-  { label: 'Empleados', icon: IconUsers, to: '/empleados' },
-  { label: 'Eventos', icon: IconCalendarEvent, to: '/eventos' },
-  { label: 'Nóminas', icon: IconCurrencyDollar, to: '/nominas' },
-  { label: 'Reportes', icon: IconChartBar, to: '/reportes' },
-  { label: 'Calendario', icon: IconCalendar, to: '/calendario' },
-  { label: 'Configuración', icon: IconSettings, to: '/config' },
+const ALL_NAV_ITEMS = [
+  { label: 'Dashboard',     icon: IconDashboard,       to: '/',           roles: null },
+  { label: 'Empleados',     icon: IconUsers,            to: '/empleados',  roles: null },
+  { label: 'Eventos',       icon: IconCalendarEvent,    to: '/eventos',    roles: null },
+  { label: 'Nóminas',       icon: IconCurrencyDollar,   to: '/nominas',    roles: null },
+  { label: 'Reportes',      icon: IconChartBar,         to: '/reportes',   roles: null },
+  { label: 'Calendario',    icon: IconCalendar,         to: '/calendario', roles: null },
+  { label: 'Configuración', icon: IconSettings,         to: '/config',     roles: null },
 ]
+
+// Rutas permitidas por rol (null = todas)
+const ALLOWED_PATHS: Record<string, string[] | null> = {
+  superadmin: null,
+  admin:      null,
+  rrhh:       null,
+  liquidador: null,
+  operador:   ['/eventos'],
+}
+
+const ROLE_HOME: Record<string, string> = {
+  superadmin: '/',
+  admin:      '/',
+  rrhh:       '/',
+  liquidador: '/',
+  operador:   '/eventos',
+}
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -37,6 +54,24 @@ export default function Layout() {
     toggleTheme()
     setColorScheme(next)
   }
+
+  const rol = user?.rol ?? 'operador'
+  const allowedPaths = ALLOWED_PATHS[rol] ?? null
+  const home = ROLE_HOME[rol] ?? '/'
+
+  // Redirigir si el rol no tiene acceso a la ruta actual
+  if (allowedPaths !== null) {
+    const allowed = allowedPaths.some(p =>
+      p === '/' ? location.pathname === '/' : location.pathname.startsWith(p)
+    )
+    if (!allowed) return <Navigate to={home} replace />
+  }
+
+  const navItems = allowedPaths === null
+    ? ALL_NAV_ITEMS
+    : ALL_NAV_ITEMS.filter(item =>
+        allowedPaths.some(p => item.to === p || (p !== '/' && item.to.startsWith(p)))
+      )
 
   return (
     <AppShell

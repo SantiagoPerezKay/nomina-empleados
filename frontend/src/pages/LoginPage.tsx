@@ -27,8 +27,9 @@ export default function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     setError('')
     try {
-      await login(data)
-      navigate('/', { replace: true })
+      const me = await login(data)
+      const home = me.rol === 'operador' ? '/eventos' : '/'
+      navigate(home, { replace: true })
     } catch {
       setError('Credenciales incorrectas')
     }

@@ -6,7 +6,7 @@ import type { Usuario, LoginRequest } from '../types'
 interface AuthCtx {
   user: Usuario | null
   loading: boolean
-  login: (data: LoginRequest) => Promise<void>
+  login: (data: LoginRequest) => Promise<Usuario>
   logout: () => void
 }
 
@@ -28,11 +28,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [])
 
-  const login = async (data: LoginRequest) => {
+  const login = async (data: LoginRequest): Promise<Usuario> => {
     const { access_token } = await apiLogin(data)
     localStorage.setItem('token', access_token)
     const me = await getMe()
     setUser(me)
+    return me
   }
 
   const logout = () => {
