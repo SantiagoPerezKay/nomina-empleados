@@ -5,6 +5,10 @@ Ejecutar una sola vez desde la carpeta backend:
     python scripts/crear_operadores.py
 """
 import asyncio
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.models.usuario import Usuario
