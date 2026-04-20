@@ -200,9 +200,7 @@ async def aprobar(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    enriched = await _enrich_evento(e, db)
-    fire_evento_webhook(build_evento_payload("aprobado", enriched))
-    return enriched
+    return e
 
 
 @router.post("/{id}/rechazar", response_model=EventoEmpleadoOut)
@@ -232,9 +230,7 @@ async def rechazar(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    enriched = await _enrich_evento(e, db)
-    fire_evento_webhook(build_evento_payload("rechazado", enriched))
-    return enriched
+    return e
 
 
 @router.delete("/{id}", status_code=204)
