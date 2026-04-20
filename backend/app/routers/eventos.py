@@ -115,7 +115,7 @@ async def historial(id: int, db: AsyncSession = Depends(get_db), _=Depends(get_c
 async def crear(
     body: EventoEmpleadoCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(require_roles("superadmin", "admin", "rrhh")),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "rrhh", "operador")),
 ):
     cat = await db.get(CategoriaEvento, body.categoria_evento_id)
     if not cat:
@@ -159,7 +159,7 @@ async def actualizar(
     id: int,
     body: EventoEmpleadoUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: Usuario = Depends(require_roles("superadmin", "admin", "rrhh")),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "rrhh", "operador")),
 ):
     e = await db.get(EventoEmpleado, id)
     if not e:
