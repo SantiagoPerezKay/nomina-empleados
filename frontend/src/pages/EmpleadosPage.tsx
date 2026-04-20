@@ -122,6 +122,11 @@ export default function EmpleadosPage() {
 
   const tipoContrato = contratoForm.watch('tipo_contrato')
 
+  // Suscripción explícita a formState.errors para que react-hook-form
+  // reactive el re-render cuando se llama a setError() de forma asíncrona
+  const createErrors = createForm.formState.errors
+  const editErrors = editForm.formState.errors
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: (data: EmpleadoCreate) => createEmpleado(data),
@@ -356,16 +361,16 @@ export default function EmpleadosPage() {
           <form onSubmit={createForm.handleSubmit((d) => createMutation.mutate(d as unknown as EmpleadoCreate))}>
             <Stack gap="sm">
               <Group grow>
-                <TextInput label="Nombre *" {...createForm.register('nombre')} error={createForm.formState.errors.nombre?.message} />
-                <TextInput label="Apellido *" {...createForm.register('apellido')} error={createForm.formState.errors.apellido?.message} />
+                <TextInput label="Nombre *" {...createForm.register('nombre')} error={createErrors.nombre?.message} />
+                <TextInput label="Apellido *" {...createForm.register('apellido')} error={createErrors.apellido?.message} />
               </Group>
               <Group grow>
-                <TextInput label="Fecha ingreso *" type="date" {...createForm.register('fecha_ingreso')} error={createForm.formState.errors.fecha_ingreso?.message} />
-                <TextInput label="Nro vendedor" type="number" {...createForm.register('nro_vendedor')} error={createForm.formState.errors.nro_vendedor?.message} />
+                <TextInput label="Fecha ingreso *" type="date" {...createForm.register('fecha_ingreso')} error={createErrors.fecha_ingreso?.message} />
+                <TextInput label="Nro vendedor" type="number" {...createForm.register('nro_vendedor')} error={createErrors.nro_vendedor?.message} />
               </Group>
               <Group grow>
-                <TextInput label="Documento" {...createForm.register('documento')} error={createForm.formState.errors.documento?.message} />
-                <TextInput label="Email" type="email" {...createForm.register('email')} error={createForm.formState.errors.email?.message} />
+                <TextInput label="Documento" {...createForm.register('documento')} error={createErrors.documento?.message} />
+                <TextInput label="Email" type="email" {...createForm.register('email')} error={createErrors.email?.message} />
               </Group>
               <TextInput label="Teléfono" {...createForm.register('telefono')} />
               <Group grow>
@@ -488,8 +493,8 @@ export default function EmpleadosPage() {
         })}>
           <Stack gap="sm">
             <Group grow>
-              <TextInput label="Nombre *" {...editForm.register('nombre')} error={editForm.formState.errors.nombre?.message} />
-              <TextInput label="Apellido *" {...editForm.register('apellido')} error={editForm.formState.errors.apellido?.message} />
+              <TextInput label="Nombre *" {...editForm.register('nombre')} error={editErrors.nombre?.message} />
+              <TextInput label="Apellido *" {...editForm.register('apellido')} error={editErrors.apellido?.message} />
             </Group>
             <Group grow>
               <TextInput label="Nro vendedor" type="number" {...editForm.register('nro_vendedor')} />
