@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
+from app.core.webhooks import fire_evento_webhook, build_evento_payload
 from app.models.models import EventoEmpleado, EventoHistorial, Empleado, CategoriaEvento
 from app.models.usuario import Usuario
 from app.schemas.schemas import (
@@ -148,7 +149,9 @@ async def crear(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    return await _enrich_evento(e, db)
+    enriched = await _enrich_evento(e, db)
+    fire_evento_webhook(build_evento_payload("creado", enriched))
+    return enriched
 
 
 @router.patch("/{id}", response_model=EventoEmpleadoOut)
@@ -197,7 +200,9 @@ async def aprobar(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    return e
+    enriched = await _enrich_evento(e, db)
+    fire_evento_webhook(build_evento_payload("aprobado", enriched))
+    return enriched
 
 
 @router.post("/{id}/rechazar", response_model=EventoEmpleadoOut)
@@ -227,7 +232,9 @@ async def rechazar(
     db.add(historial)
     await db.commit()
     await db.refresh(e)
-    return e
+    enriched = await _enrich_evento(e, db)
+    fire_evento_webhook(build_evento_payload("rechazado", enriched))
+    return enriched
 
 
 @router.delete("/{id}", status_code=204)
