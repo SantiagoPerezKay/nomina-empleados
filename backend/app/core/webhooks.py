@@ -3,8 +3,10 @@ Utilidades para enviar notificaciones a webhooks externos (n8n, etc.).
 El envío es fire-and-forget: nunca bloquea ni falla el endpoint principal.
 """
 import asyncio
+import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -14,11 +16,29 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _json_safe(obj: Any) -> Any:
+    """Convierte recursivamente tipos no serializables por el encoder estándar."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(i) for i in obj]
+    return obj
+
+
 async def _post_webhook(url: str, payload: dict[str, Any]) -> None:
     """Envía el payload al webhook. Si falla, solo loguea el error."""
     try:
+        safe_payload = _json_safe(payload)
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(
+                url,
+                content=json.dumps(safe_payload),
+                headers={"Content-Type": "application/json"},
+            )
             resp.raise_for_status()
             logger.info(f"[webhook] OK → {url} | status={resp.status_code}")
     except Exception as exc:
