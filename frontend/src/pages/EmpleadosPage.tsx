@@ -132,7 +132,12 @@ export default function EmpleadosPage() {
       contratoForm.setValue('fecha_inicio', createForm.getValues('fecha_ingreso') || hoy())
       setWizardStep(1)
     },
-    onError: () => notifications.show({ message: 'Error al crear empleado', color: 'red' }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (err: any) => notifications.show({
+      title: 'No se pudo crear el empleado',
+      message: err?.response?.data?.detail ?? 'Error interno del servidor',
+      color: 'red', autoClose: 8000,
+    }),
   })
 
   const contratoMutation = useMutation({
@@ -165,7 +170,12 @@ export default function EmpleadosPage() {
       notifications.show({ message: 'Empleado actualizado', color: 'green' })
       setEditTarget(null)
     },
-    onError: () => notifications.show({ message: 'Error al actualizar', color: 'red' }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (err: any) => notifications.show({
+      title: 'No se pudo actualizar',
+      message: err?.response?.data?.detail ?? 'Error interno del servidor',
+      color: 'red', autoClose: 8000,
+    }),
   })
 
   const egresoMutation = useMutation({

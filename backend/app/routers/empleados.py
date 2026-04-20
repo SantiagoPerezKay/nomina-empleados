@@ -2,6 +2,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_roles
@@ -65,11 +66,28 @@ async def crear(
     db: AsyncSession = Depends(get_db),
     _: Usuario = Depends(require_roles("superadmin", "admin", "rrhh")),
 ):
-    emp = Empleado(**body.model_dump())
-    db.add(emp)
-    await db.commit()
-    await db.refresh(emp)
-    return await _enrich_empleado(emp, db)
+    # Normalizar strings vacíos a None para evitar violaciones de unique constraint
+    data = body.model_dump()
+    for field in ("email", "documento", "telefono", "nro_vendedor"):
+        if data.get(field) == "" or data.get(field) == 0:
+            data[field] = None
+
+    try:
+        emp = Empleado(**data)
+        db.add(emp)
+        await db.commit()
+        await db.refresh(emp)
+        return await _enrich_empleado(emp, db)
+    except IntegrityError as e:
+        await db.rollback()
+        err_str = str(e.orig).lower()
+        if "nro_vendedor" in err_str:
+            raise HTTPException(409, "El número de vendedor ya está en uso por otro empleado")
+        if "documento" in err_str:
+            raise HTTPException(409, "El documento ya está registrado en otro empleado")
+        if "email" in err_str:
+            raise HTTPException(409, "El email ya está registrado en otro empleado")
+        raise HTTPException(409, "Ya existe un empleado con esos datos (valor duplicado)")
 
 
 @router.put("/{id}", response_model=EmpleadoOut)
@@ -82,11 +100,26 @@ async def actualizar(
     emp = await db.get(Empleado, id)
     if not emp:
         raise HTTPException(404, "Empleado no encontrado")
-    for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(emp, k, v)
-    await db.commit()
-    await db.refresh(emp)
-    return await _enrich_empleado(emp, db)
+    data = body.model_dump(exclude_unset=True)
+    for field in ("email", "documento", "telefono"):
+        if data.get(field) == "":
+            data[field] = None
+    try:
+        for k, v in data.items():
+            setattr(emp, k, v)
+        await db.commit()
+        await db.refresh(emp)
+        return await _enrich_empleado(emp, db)
+    except IntegrityError as e:
+        await db.rollback()
+        err_str = str(e.orig).lower()
+        if "nro_vendedor" in err_str:
+            raise HTTPException(409, "El número de vendedor ya está en uso por otro empleado")
+        if "documento" in err_str:
+            raise HTTPException(409, "El documento ya está registrado en otro empleado")
+        if "email" in err_str:
+            raise HTTPException(409, "El email ya está registrado en otro empleado")
+        raise HTTPException(409, "Ya existe un empleado con esos datos (valor duplicado)")
 
 
 @router.post("/{id}/egresar", response_model=EmpleadoOut)
