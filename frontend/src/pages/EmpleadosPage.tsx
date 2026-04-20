@@ -133,11 +133,19 @@ export default function EmpleadosPage() {
       setWizardStep(1)
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (err: any) => notifications.show({
-      title: 'No se pudo crear el empleado',
-      message: err?.response?.data?.detail ?? 'Error interno del servidor',
-      color: 'red', autoClose: 8000,
-    }),
+    onError: (err: any) => {
+      const detail: string = err?.response?.data?.detail ?? 'Error interno del servidor'
+      // Marcar el campo exacto que causó el conflicto
+      if (detail.toLowerCase().includes('documento')) {
+        createForm.setError('documento', { message: detail })
+      } else if (detail.toLowerCase().includes('vendedor')) {
+        createForm.setError('nro_vendedor', { message: detail })
+      } else if (detail.toLowerCase().includes('email')) {
+        createForm.setError('email', { message: detail })
+      } else {
+        notifications.show({ title: 'No se pudo crear el empleado', message: detail, color: 'red', autoClose: 8000 })
+      }
+    },
   })
 
   const contratoMutation = useMutation({
@@ -353,11 +361,11 @@ export default function EmpleadosPage() {
               </Group>
               <Group grow>
                 <TextInput label="Fecha ingreso *" type="date" {...createForm.register('fecha_ingreso')} error={createForm.formState.errors.fecha_ingreso?.message} />
-                <TextInput label="Nro vendedor" type="number" {...createForm.register('nro_vendedor')} />
+                <TextInput label="Nro vendedor" type="number" {...createForm.register('nro_vendedor')} error={createForm.formState.errors.nro_vendedor?.message} />
               </Group>
               <Group grow>
-                <TextInput label="Documento" {...createForm.register('documento')} />
-                <TextInput label="Email" type="email" {...createForm.register('email')} />
+                <TextInput label="Documento" {...createForm.register('documento')} error={createForm.formState.errors.documento?.message} />
+                <TextInput label="Email" type="email" {...createForm.register('email')} error={createForm.formState.errors.email?.message} />
               </Group>
               <TextInput label="Teléfono" {...createForm.register('telefono')} />
               <Group grow>
