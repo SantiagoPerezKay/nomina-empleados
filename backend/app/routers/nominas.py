@@ -1,3 +1,4 @@
+import calendar
 import logging
 from datetime import date, datetime, time
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,6 +27,10 @@ class GenerarBorradorReq(BaseModel):
 
 class CalcularMasivoReq(BaseModel):
     periodo_id: int
+
+
+class CalcularRapidoReq(BaseModel):
+    modo: str  # 'mes_actual' | 'hasta_hoy'
 
 
 router = APIRouter(prefix="/nominas", tags=["Nóminas"])
@@ -507,6 +512,54 @@ async def _enrich_nomina(nomina: Nomina, db: AsyncSession) -> dict:
     emp = await db.get(Empleado, nomina.empleado_id)
     data["empleado_nombre"] = f"{emp.apellido}, {emp.nombre}" if emp else None
     return data
+
+
+@router.post("/calcular-rapido", status_code=201)
+async def calcular_rapido(
+    body: CalcularRapidoReq,
+    db: AsyncSession = Depends(get_db),
+    current_user: Usuario = Depends(require_roles("superadmin", "admin", "liquidador")),
+):
+    """Calcula la nómina para el período del mes actual o hasta la fecha de hoy,
+    creando el período automáticamente si no existe."""
+    hoy = date.today()
+    primer_dia = date(hoy.year, hoy.month, 1)
+
+    if body.modo == "mes_actual":
+        ultimo_dia = date(hoy.year, hoy.month, calendar.monthrange(hoy.year, hoy.month)[1])
+    elif body.modo == "hasta_hoy":
+        ultimo_dia = hoy
+    else:
+        raise HTTPException(400, "modo debe ser 'mes_actual' o 'hasta_hoy'")
+
+    # Buscar período existente no cerrado con esas fechas
+    r_periodo = await db.execute(
+        select(PeriodoNomina).where(
+            PeriodoNomina.fecha_inicio == primer_dia,
+            PeriodoNomina.fecha_fin == ultimo_dia,
+            PeriodoNomina.cerrado == False,
+        )
+    )
+    periodo = r_periodo.scalars().first()
+
+    if not periodo:
+        periodo = PeriodoNomina(
+            tipo="mensual",
+            fecha_inicio=primer_dia,
+            fecha_fin=ultimo_dia,
+            cerrado=False,
+        )
+        db.add(periodo)
+        await db.flush()
+        log.info(f"[calcular-rapido] Período creado: id={periodo.id} ({primer_dia} → {ultimo_dia})")
+    else:
+        log.info(f"[calcular-rapido] Período existente: id={periodo.id} ({primer_dia} → {ultimo_dia})")
+
+    # Reutilizar la lógica de cálculo masivo
+    nominas_result = await calcular_masivo(
+        CalcularMasivoReq(periodo_id=periodo.id), db, current_user
+    )
+    return {"periodo_id": periodo.id, "nominas": nominas_result}
 
 
 @router.post("/calcular", status_code=201)

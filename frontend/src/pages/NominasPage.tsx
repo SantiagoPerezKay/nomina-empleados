@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { IconPlus, IconCalculator, IconList, IconLock, IconCheck, IconX } from '@tabler/icons-react'
 import {
-  getPeriodos, createPeriodo, calcularNomina, getNominas,
+  getPeriodos, createPeriodo, calcularNomina, calcularRapido, getNominas,
   getDetallesNomina, cerrarPeriodo, marcarPagado, desmarcarPagado,
 } from '../api/nominas'
 import type { PeriodoCreate } from '../types'
@@ -65,6 +65,18 @@ export default function NominasPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nominas', selectedPeriodo] })
       notifications.show({ message: 'Nómina calculada', color: 'green' })
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.detail ?? 'Error al calcular', color: 'red' }),
+  })
+
+  const calcularRapidoMutation = useMutation({
+    mutationFn: (modo: 'mes_actual' | 'hasta_hoy') => calcularRapido(modo),
+    onSuccess: (data) => {
+      setSelectedPeriodo(data.periodo_id)
+      qc.invalidateQueries({ queryKey: ['periodos'] })
+      qc.invalidateQueries({ queryKey: ['nominas', data.periodo_id] })
+      notifications.show({ message: `Nómina calculada (${data.nominas.length} empleados)`, color: 'green' })
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (e: any) => notifications.show({ message: e?.response?.data?.detail ?? 'Error al calcular', color: 'red' }),
@@ -134,9 +146,33 @@ export default function NominasPage() {
     <Stack gap="md">
       <Group justify="space-between">
         <Title order={2}>Nóminas</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={openPeriodo}>
-          Nuevo período
-        </Button>
+        <Group gap="sm">
+          <Tooltip label="Crea o usa el período del 1° al último día del mes actual y calcula">
+            <Button
+              variant="light"
+              color="teal"
+              leftSection={<IconCalculator size={16} />}
+              loading={calcularRapidoMutation.isPending && calcularRapidoMutation.variables === 'mes_actual'}
+              onClick={() => calcularRapidoMutation.mutate('mes_actual')}
+            >
+              Calcular mes actual
+            </Button>
+          </Tooltip>
+          <Tooltip label="Crea o usa el período del 1° del mes hasta hoy y calcula">
+            <Button
+              variant="light"
+              color="cyan"
+              leftSection={<IconCalculator size={16} />}
+              loading={calcularRapidoMutation.isPending && calcularRapidoMutation.variables === 'hasta_hoy'}
+              onClick={() => calcularRapidoMutation.mutate('hasta_hoy')}
+            >
+              Calcular hasta hoy
+            </Button>
+          </Tooltip>
+          <Button leftSection={<IconPlus size={16} />} onClick={openPeriodo}>
+            Nuevo período
+          </Button>
+        </Group>
       </Group>
 
       <Group align="flex-end">

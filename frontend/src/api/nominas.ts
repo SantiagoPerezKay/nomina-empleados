@@ -61,3 +61,8 @@ export const desmarcarPagado = async (id: number) => {
   const res = await client.post<Nomina>(`/nominas/${id}/desmarcar-pagado`)
   return res.data
 }
+
+export const calcularRapido = async (modo: 'mes_actual' | 'hasta_hoy') => {
+  const res = await client.post<{ periodo_id: number; nominas: Nomina[] }>('/nominas/calcular-rapido', { modo })
+  return res.data
+}

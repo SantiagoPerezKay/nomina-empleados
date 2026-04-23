@@ -22,6 +22,8 @@ import type { EventoCreate, CategoriaEvento, Empleado } from '../types'
 import { format } from 'date-fns'
 
 // ── Schemas ────────────────────────────────────────────────────────────────
+// Schema único para todos los tipos de acción rápida (campos opcionales,
+// validación manual en handleQuickSubmit según el kind activo)
 const quickSchema = z.object({
   empleado_id: z.coerce.number().min(1, 'Requerido'),
   fecha: z.string().min(1, 'Requerido'),
@@ -29,16 +31,6 @@ const quickSchema = z.object({
   horas_cantidad: z.coerce.number().optional(),
   porcentaje_extra: z.coerce.number().optional(),
   monto: z.coerce.number().optional(),
-})
-const quickHsSchema = quickSchema.extend({
-  horas_cantidad: z.coerce.number().min(0.25, 'Mín. 0.25h'),
-  porcentaje_extra: z.coerce.number().refine(v => v === 50 || v === 100, 'Debe ser 50 o 100'),
-})
-const quickComisionSchema = quickSchema.extend({
-  porcentaje_extra: z.coerce.number().min(0.1, 'Requerido'),
-})
-const quickBonoSchema = quickSchema.extend({
-  monto: z.coerce.number().positive('Debe ser mayor a 0'),
 })
 const createSchema = z.object({
   empleado_id: z.coerce.number().min(1, 'Requerido'),
@@ -172,14 +164,9 @@ export default function EventosPage() {
   })
   const rechazarForm = useForm<z.infer<typeof rechazarSchema>>({ resolver: zodResolver(rechazarSchema) })
 
-  const _quickSchema = quickKind === 'extras' ? quickHsSchema
-    : quickKind === 'comision' ? quickComisionSchema
-    : quickKind === 'bono' ? quickBonoSchema
-    : quickSchema
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const quickForm = useForm<z.infer<typeof quickSchema>>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(_quickSchema as any) as any,
+    resolver: zodResolver(quickSchema) as any,
     defaultValues: {
       empleado_id: 0,
       fecha: format(new Date(), 'yyyy-MM-dd'),
@@ -235,6 +222,27 @@ export default function EventosPage() {
       })
       return
     }
+
+    // Validación manual por tipo
+    if (meta.needsHoras) {
+      if (!d.horas_cantidad || d.horas_cantidad < 0.25) {
+        quickForm.setError('horas_cantidad', { message: 'Mín. 0.25h' }); return
+      }
+      if (d.porcentaje_extra !== 50 && d.porcentaje_extra !== 100) {
+        quickForm.setError('porcentaje_extra', { message: 'Debe ser 50 o 100' }); return
+      }
+    }
+    if (meta.needsComision) {
+      if (!d.porcentaje_extra || d.porcentaje_extra <= 0) {
+        quickForm.setError('porcentaje_extra', { message: 'Ingresá el porcentaje' }); return
+      }
+    }
+    if (meta.needsBono) {
+      if (!d.monto || d.monto <= 0) {
+        quickForm.setError('monto', { message: 'Ingresá el monto del bono' }); return
+      }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = {
       empleado_id: emp.id,
@@ -247,12 +255,8 @@ export default function EventosPage() {
       payload.horas_cantidad = d.horas_cantidad
       payload.porcentaje_extra = d.porcentaje_extra
     }
-    if (meta.needsComision) {
-      payload.porcentaje_extra = d.porcentaje_extra
-    }
-    if (meta.needsBono) {
-      payload.monto = d.monto
-    }
+    if (meta.needsComision) payload.porcentaje_extra = d.porcentaje_extra
+    if (meta.needsBono) payload.monto = d.monto
     createMutation.mutate(payload as EventoCreate)
   })
 
