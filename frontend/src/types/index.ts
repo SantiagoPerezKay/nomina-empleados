@@ -172,6 +172,7 @@ export interface Nomina {
 export interface DashboardKPIs {
   total_empleados_activos: number
   total_nomina_mes_actual: number
+  total_nominas_pagadas: number
   eventos_pendientes: number
   asistencias_hoy: number
   ausentes_hoy: number

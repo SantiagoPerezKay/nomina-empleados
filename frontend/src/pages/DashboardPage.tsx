@@ -5,7 +5,7 @@ import {
 } from '@mantine/core'
 import {
   IconUsers, IconCurrencyDollar, IconAlertCircle,
-  IconClockHour4, IconUserOff,
+  IconClockHour4, IconUserOff, IconCircleCheck,
 } from '@tabler/icons-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -100,15 +100,16 @@ export default function DashboardPage() {
 
       {/* KPIs */}
       {loadingKpis ? (
-        <SimpleGrid cols={{ base: 2, sm: 3, md: 5 }}>
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={90} radius="md" />)}
+        <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={90} radius="md" />)}
         </SimpleGrid>
       ) : kpis ? (
-        <SimpleGrid cols={{ base: 2, sm: 3, md: 5 }}>
+        <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }}>
           <KPICard title="Empleados activos" value={kpis.total_empleados_activos} icon={IconUsers} color="indigo" />
-          <KPICard title="Total en nóminas" value={formatMoney(kpis.total_nomina_mes_actual)} icon={IconCurrencyDollar} color="green" />
+          <KPICard title="Total nóminas del mes" value={formatMoney(kpis.total_nomina_mes_actual)} icon={IconCurrencyDollar} color="green" />
+          <KPICard title="Total nóminas pagadas" value={formatMoney(kpis.total_nominas_pagadas)} icon={IconCircleCheck} color="teal" />
           <KPICard title="Eventos pendientes" value={kpis.eventos_pendientes} icon={IconAlertCircle} color="orange" />
-          <KPICard title="Presentes hoy" value={kpis.asistencias_hoy} icon={IconClockHour4} color="teal" />
+          <KPICard title="Presentes hoy" value={kpis.asistencias_hoy} icon={IconClockHour4} color="blue" />
           <KPICard title="Ausentes hoy" value={kpis.ausentes_hoy} icon={IconUserOff} color="red" />
         </SimpleGrid>
       ) : null}

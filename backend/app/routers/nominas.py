@@ -532,11 +532,10 @@ async def calcular_rapido(
     else:
         raise HTTPException(400, "modo debe ser 'mes_actual' o 'hasta_hoy'")
 
-    # Buscar período existente no cerrado con esas fechas
+    # Buscar período existente no cerrado que empiece este mes (ignorar fecha_fin para no crear duplicados)
     r_periodo = await db.execute(
         select(PeriodoNomina).where(
             PeriodoNomina.fecha_inicio == primer_dia,
-            PeriodoNomina.fecha_fin == ultimo_dia,
             PeriodoNomina.cerrado == False,
         )
     )
@@ -553,7 +552,13 @@ async def calcular_rapido(
         await db.flush()
         log.info(f"[calcular-rapido] Período creado: id={periodo.id} ({primer_dia} → {ultimo_dia})")
     else:
-        log.info(f"[calcular-rapido] Período existente: id={periodo.id} ({primer_dia} → {ultimo_dia})")
+        # Actualizar fecha_fin si cambió (ej: "hasta hoy" vs "mes completo")
+        if periodo.fecha_fin != ultimo_dia:
+            log.info(f"[calcular-rapido] Período id={periodo.id}: actualizando fecha_fin {periodo.fecha_fin} → {ultimo_dia}")
+            periodo.fecha_fin = ultimo_dia
+            await db.flush()
+        else:
+            log.info(f"[calcular-rapido] Período existente reutilizado: id={periodo.id} ({primer_dia} → {ultimo_dia})")
 
     # Reutilizar la lógica de cálculo masivo
     nominas_result = await calcular_masivo(

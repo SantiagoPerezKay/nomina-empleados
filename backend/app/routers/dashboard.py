@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal, CategoriaEvento
+from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal, CategoriaEvento, PeriodoNomina
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 class DashboardKPIs(BaseModel):
     total_empleados_activos: int
     total_nomina_mes_actual: float
+    total_nominas_pagadas: float
     eventos_pendientes: int
     asistencias_hoy: int
     ausentes_hoy: int
@@ -42,12 +43,28 @@ async def obtener_kpis(db: AsyncSession = Depends(get_db), _=Depends(get_current
         select(func.count(Empleado.id)).where(Empleado.activo == True)
     )).scalar() or 0
 
-    total_nom = (await db.execute(
-        select(func.sum(Nomina.neto_a_pagar)).where(
-            func.extract("month", Nomina.created_at) == hoy.month,
-            func.extract("year", Nomina.created_at) == hoy.year,
+    # Filtrar por fecha_inicio del período para no sumar períodos de otros meses
+    # ni duplicar si hay más de un período por mes (defensivo).
+    _nom_mes_q = (
+        select(func.sum(Nomina.neto_a_pagar))
+        .join(PeriodoNomina, Nomina.periodo_id == PeriodoNomina.id)
+        .where(
+            func.extract("month", PeriodoNomina.fecha_inicio) == hoy.month,
+            func.extract("year", PeriodoNomina.fecha_inicio) == hoy.year,
         )
-    )).scalar() or 0.0
+    )
+    total_nom = (await db.execute(_nom_mes_q)).scalar() or 0.0
+
+    _pagadas_q = (
+        select(func.sum(func.coalesce(Nomina.monto_pagado, Nomina.neto_a_pagar)))
+        .join(PeriodoNomina, Nomina.periodo_id == PeriodoNomina.id)
+        .where(
+            func.extract("month", PeriodoNomina.fecha_inicio) == hoy.month,
+            func.extract("year", PeriodoNomina.fecha_inicio) == hoy.year,
+            Nomina.pagado == True,
+        )
+    )
+    total_pagadas = (await db.execute(_pagadas_q)).scalar() or 0.0
 
     eventos_pend = (await db.execute(
         select(func.count(EventoEmpleado.id)).where(EventoEmpleado.estado == "sin_revisar")
@@ -78,6 +95,7 @@ async def obtener_kpis(db: AsyncSession = Depends(get_db), _=Depends(get_current
     return DashboardKPIs(
         total_empleados_activos=total_emp,
         total_nomina_mes_actual=float(total_nom),
+        total_nominas_pagadas=float(total_pagadas),
         eventos_pendientes=eventos_pend,
         asistencias_hoy=presentes_hoy,
         ausentes_hoy=ausentes,
@@ -131,9 +149,9 @@ async def nominas_por_sucursal(
     if periodo_id:
         q = q.where(Nomina.periodo_id == periodo_id)
     else:
-        q = q.where(
-            func.extract("month", Nomina.created_at) == hoy.month,
-            func.extract("year", Nomina.created_at) == hoy.year,
+        q = q.join(PeriodoNomina, Nomina.periodo_id == PeriodoNomina.id).where(
+            func.extract("month", PeriodoNomina.fecha_inicio) == hoy.month,
+            func.extract("year", PeriodoNomina.fecha_inicio) == hoy.year,
         )
     q = q.group_by(Empleado.sucursal_id, Sucursal.nombre).order_by(Sucursal.nombre)
     r = await db.execute(q)
