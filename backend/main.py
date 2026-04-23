@@ -11,6 +11,7 @@ from app.routers.nominas import router as nominas_router
 from app.routers.asistencias import router as asistencias_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.reportes import router as reportes_router
+from app.routers.cuenta_corriente import router as cuenta_corriente_router
 from app.routers.general import (
     cat_egreso_router,
     cat_evento_router,
@@ -75,6 +76,21 @@ STARTUP_MIGRATIONS = [
     )""",
     """CREATE INDEX IF NOT EXISTS idx_horas_extras_empleado
        ON horas_extras(empleado_id, fecha)""",
+    # Tabla cuenta corriente (compras del empleado a descontar en nómina)
+    """CREATE TABLE IF NOT EXISTS cuenta_corriente (
+       id SERIAL PRIMARY KEY,
+       empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+       fecha DATE NOT NULL,
+       monto NUMERIC(12,2) NOT NULL,
+       descripcion TEXT,
+       nomina_id INTEGER REFERENCES nominas(id) NULL,
+       created_by_id INTEGER REFERENCES usuarios(id) NULL,
+       created_at TIMESTAMP DEFAULT NOW()
+    )""",
+    """CREATE INDEX IF NOT EXISTS idx_cc_empleado
+       ON cuenta_corriente(empleado_id)""",
+    """CREATE INDEX IF NOT EXISTS idx_cc_pendiente
+       ON cuenta_corriente(empleado_id, nomina_id)""",
 ]
 
 
@@ -117,6 +133,7 @@ app.include_router(asistencias_router, prefix="/api")
 app.include_router(eventos_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(reportes_router, prefix="/api")
+app.include_router(cuenta_corriente_router, prefix="/api")
 app.include_router(encargados_router, prefix="/api")
 app.include_router(cat_egreso_router, prefix="/api")
 app.include_router(cat_evento_router, prefix="/api")

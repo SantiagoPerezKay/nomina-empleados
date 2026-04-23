@@ -400,6 +400,27 @@ class HorasExtrasOut(BaseSchema):
     created_at: Optional[datetime] = None
 
 
+# ─── CUENTA CORRIENTE ─────────────────────────────────────────────────────────
+
+class CuentaCorrienteCreate(BaseSchema):
+    empleado_id: int
+    fecha: date
+    monto: Decimal
+    descripcion: Optional[str] = None
+
+class CuentaCorrienteOut(BaseSchema):
+    id: int
+    empleado_id: int
+    fecha: date
+    monto: Decimal
+    descripcion: Optional[str] = None
+    nomina_id: Optional[int] = None
+    created_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    # enriquecidos
+    created_by_nombre: Optional[str] = None
+
+
 # ─── ASISTENCIAS ───────────────────────────────────────────────────────────────
 
 class AsistenciaCreate(BaseSchema):

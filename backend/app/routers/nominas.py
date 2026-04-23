@@ -10,7 +10,7 @@ from app.core.deps import get_current_user, require_roles
 from app.models.models import (
     Nomina, NominaDetalle, PeriodoNomina, Contrato, Empleado,
     EventoEmpleado, CategoriaEvento, ConceptoNomina, ConceptoContrato, Feriado,
-    HorasExtras,
+    HorasExtras, CuentaCorriente,
 )
 from app.models.usuario import Usuario
 from app.schemas.schemas import NominaCreate, NominaUpdate, NominaOut, NominaDetalleCreate, NominaDetalleOut
@@ -389,6 +389,37 @@ async def generar_borrador(
                 )
                 db.add(det)
                 detalles.append(det)
+
+    # ── Cuenta corriente pendiente del empleado ───────────────────────────────
+    # Suma todos los cargos sin nomina_id (aún no descontados) y los deduce.
+    r_cc = await db.execute(
+        select(CuentaCorriente).where(
+            CuentaCorriente.empleado_id == body.empleado_id,
+            CuentaCorriente.nomina_id == None,
+        )
+    )
+    cargos_cc = r_cc.scalars().all()
+    total_cc = sum(float(c.monto) for c in cargos_cc)
+    if total_cc > 0:
+        cc_concepto_id = await _get_or_create_concepto(
+            db, "cuenta_corriente_desc", ["cc_desc", "descuento_cc"],
+            "Descuento cuenta corriente", "deduccion", "cuenta_corriente",
+        )
+        det_cc = NominaDetalle(
+            nomina_id=nomina.id,
+            concepto_id=cc_concepto_id,
+            tipo="deduccion",
+            cantidad=1,
+            monto_unitario=total_cc,
+            monto_total=total_cc,
+            observacion=f"Cuenta corriente ({len(cargos_cc)} cargo(s))",
+        )
+        db.add(det_cc)
+        detalles.append(det_cc)
+        log.info(f"[NOMINA] Cuenta corriente: {len(cargos_cc)} cargos = ${total_cc:.2f}")
+        # Marcar los cargos como vinculados a esta nómina (se setea nomina_id después del flush)
+        for c in cargos_cc:
+            c.nomina_id = nomina.id
 
     # Para empleados por hora: sumar horas trabajadas como ingreso base
     if not es_mensual and valor_hora > 0:

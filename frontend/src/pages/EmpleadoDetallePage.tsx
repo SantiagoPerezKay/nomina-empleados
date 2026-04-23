@@ -11,14 +11,15 @@ import { notifications } from '@mantine/notifications'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconArrowLeft, IconPlus, IconTrash, IconSettings, IconClock } from '@tabler/icons-react'
+import { IconArrowLeft, IconPlus, IconTrash, IconSettings, IconClock, IconCreditCard } from '@tabler/icons-react'
 import { format } from 'date-fns'
 import {
   getEmpleado, getContratosEmpleado, getEventosEmpleado,
   getNominasEmpleado, createContrato,
 } from '../api/empleados'
 import { getTurnos, getSucursales, getAsignacionesTurno, createAsignacionTurno, deleteAsignacionTurno, getConceptos, getConceptosContrato, setConceptosContrato, getHorasExtras, createHorasExtras, deleteHorasExtras } from '../api/general'
-import type { AsignacionTurnoCreate, HorasExtrasCreate } from '../types'
+import { getCuentaCorriente, createCargo, deleteCargo } from '../api/cuentaCorriente'
+import type { AsignacionTurnoCreate, HorasExtrasCreate, CuentaCorrienteCreate } from '../types'
 
 const hoy = () => format(new Date(), 'yyyy-MM-dd')
 
@@ -32,6 +33,12 @@ const DIAS_SEMANA = [
   { value: '6', label: 'Sábado' },
   { value: '7', label: 'Domingo' },
 ]
+
+const cuentaCorrienteSchema = z.object({
+  fecha: z.string().min(1, 'Requerido'),
+  monto: z.coerce.number().positive('Debe ser mayor a 0'),
+  descripcion: z.string().optional(),
+})
 
 const hsExtrasSchema = z.object({
   fecha: z.string().min(1, 'Requerido'),
@@ -63,6 +70,7 @@ export default function EmpleadoDetallePage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [contratoOpened, { open: openContrato, close: closeContrato }] = useDisclosure()
+  const [ccOpened, { open: openCc, close: closeCc }] = useDisclosure()
 
   const [asignacionOpened, { open: openAsignacion, close: closeAsignacion }] = useDisclosure()
   const [hsExtrasOpened, { open: openHsExtras, close: closeHsExtras }] = useDisclosure()
@@ -77,6 +85,7 @@ export default function EmpleadoDetallePage() {
   const { data: nominas } = useQuery({ queryKey: ['empleado-nominas', empId], queryFn: () => getNominasEmpleado(empId) })
   const { data: asignaciones } = useQuery({ queryKey: ['empleado-asignaciones', empId], queryFn: () => getAsignacionesTurno(empId) })
   const { data: hsExtras } = useQuery({ queryKey: ['empleado-hs-extras', empId], queryFn: () => getHorasExtras(empId) })
+  const { data: cuentaCorriente } = useQuery({ queryKey: ['empleado-cc', empId], queryFn: () => getCuentaCorriente({ empleado_id: empId }) })
   const { data: turnos } = useQuery({ queryKey: ['turnos'], queryFn: getTurnos })
   const { data: sucursales } = useQuery({ queryKey: ['sucursales'], queryFn: getSucursales })
   const { data: allConceptos } = useQuery({ queryKey: ['conceptos'], queryFn: getConceptos })
@@ -170,6 +179,32 @@ export default function EmpleadoDetallePage() {
     onError: () => notifications.show({ message: 'Error al eliminar', color: 'red' }),
   })
 
+  const ccMutation = useMutation({
+    mutationFn: (data: CuentaCorrienteCreate) => createCargo(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-cc', empId] })
+      notifications.show({ message: 'Cargo registrado en cuenta corriente', color: 'green' })
+      ccForm.reset({ fecha: hoy() })
+      closeCc()
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err?.response?.data?.detail ?? 'Error al registrar', color: 'red',
+    }),
+  })
+
+  const deleteCcMutation = useMutation({
+    mutationFn: (id: number) => deleteCargo(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['empleado-cc', empId] })
+      notifications.show({ message: 'Cargo eliminado', color: 'orange' })
+    },
+    onError: (err: any) => notifications.show({
+      title: 'No se pudo eliminar',
+      message: err?.response?.data?.detail ?? 'Error al eliminar',
+      color: 'red',
+    }),
+  })
+
   // conceptosMutation y openConceptosModal se usan dentro del modal directamente
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,6 +225,13 @@ export default function EmpleadoDetallePage() {
     resolver: zodResolver(hsExtrasSchema) as any,
     defaultValues: { fecha: hoy(), porcentaje: 50 },
   })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ccForm = useForm<z.infer<typeof cuentaCorrienteSchema>>({
+    resolver: zodResolver(cuentaCorrienteSchema) as any,
+    defaultValues: { fecha: hoy() },
+  })
+  const ccErrors = ccForm.formState.errors
 
   // ── Estadísticas de horas extras ───────────────────────────────────────────
   const HS_EXTRA_CODIGOS = ['horas_extras', 'HE_EXTRA', 'HORAS_EXTRAS', 'hs_extras', 'HE']
@@ -346,6 +388,9 @@ export default function EmpleadoDetallePage() {
           </Tabs.Tab>
           <Tabs.Tab value="eventos">Eventos ({eventos?.length ?? 0})</Tabs.Tab>
           <Tabs.Tab value="nominas">Nóminas ({nominas?.length ?? 0})</Tabs.Tab>
+          <Tabs.Tab value="cuenta-corriente" leftSection={<IconCreditCard size={14} />}>
+            Cta. Cte. ({(cuentaCorriente ?? []).filter(c => !c.nomina_id).length} pend.)
+          </Tabs.Tab>
         </Tabs.List>
 
         {/* Contratos */}
@@ -612,7 +657,143 @@ export default function EmpleadoDetallePage() {
             </Table>
           </Table.ScrollContainer>
         </Tabs.Panel>
+
+        {/* Cuenta corriente */}
+        <Tabs.Panel value="cuenta-corriente" pt="sm">
+          {(() => {
+            const pendientes = (cuentaCorriente ?? []).filter(c => !c.nomina_id)
+            const descontados = (cuentaCorriente ?? []).filter(c => !!c.nomina_id)
+            const totalPendiente = pendientes.reduce((s, c) => s + Number(c.monto), 0)
+            return (
+              <Stack gap="sm">
+                <Group justify="space-between" align="flex-start">
+                  <Stack gap={2}>
+                    <Text size="sm" c="dimmed">
+                      Los cargos pendientes se descuentan automáticamente al generar la nómina del empleado.
+                    </Text>
+                    {totalPendiente > 0 && (
+                      <Text size="sm" fw={600} c="orange">
+                        Saldo pendiente: ${totalPendiente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </Text>
+                    )}
+                  </Stack>
+                  <Button size="xs" leftSection={<IconPlus size={14} />} onClick={openCc}>
+                    Agregar cargo
+                  </Button>
+                </Group>
+
+                {pendientes.length > 0 && (
+                  <>
+                    <Text size="xs" fw={600} tt="uppercase" c="orange">Pendientes de descuento</Text>
+                    <Table.ScrollContainer minWidth={500}>
+                      <Table striped>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Fecha</Table.Th>
+                            <Table.Th>Descripción</Table.Th>
+                            <Table.Th>Monto</Table.Th>
+                            <Table.Th>Cargado por</Table.Th>
+                            <Table.Th></Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {pendientes.map((c) => (
+                            <Table.Tr key={c.id}>
+                              <Table.Td>{c.fecha}</Table.Td>
+                              <Table.Td>{c.descripcion ?? '—'}</Table.Td>
+                              <Table.Td fw={600} c="orange">
+                                ${Number(c.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="xs" c="dimmed">{c.created_by_nombre ?? '—'}</Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <ActionIcon
+                                  color="red" variant="subtle" size="sm"
+                                  onClick={() => deleteCcMutation.mutate(c.id)}
+                                  loading={deleteCcMutation.isPending}
+                                >
+                                  <IconTrash size={14} />
+                                </ActionIcon>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  </>
+                )}
+
+                {descontados.length > 0 && (
+                  <>
+                    <Divider mt="sm" />
+                    <Text size="xs" fw={600} tt="uppercase" c="dimmed">Historial descontado en nómina</Text>
+                    <Table.ScrollContainer minWidth={500}>
+                      <Table>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Fecha</Table.Th>
+                            <Table.Th>Descripción</Table.Th>
+                            <Table.Th>Monto</Table.Th>
+                            <Table.Th>Nómina #</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {descontados.map((c) => (
+                            <Table.Tr key={c.id}>
+                              <Table.Td>{c.fecha}</Table.Td>
+                              <Table.Td>{c.descripcion ?? '—'}</Table.Td>
+                              <Table.Td c="dimmed">
+                                ${Number(c.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                              </Table.Td>
+                              <Table.Td>
+                                <Badge variant="light" color="gray" size="xs">Nómina #{c.nomina_id}</Badge>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                  </>
+                )}
+
+                {(cuentaCorriente ?? []).length === 0 && (
+                  <Text size="sm" c="dimmed" ta="center" py="lg">Sin movimientos en cuenta corriente</Text>
+                )}
+              </Stack>
+            )
+          })()}
+        </Tabs.Panel>
       </Tabs>
+
+      {/* Modal agregar cargo cuenta corriente */}
+      <Modal opened={ccOpened} onClose={closeCc} title="Nuevo cargo en cuenta corriente" size="sm">
+        <form onSubmit={ccForm.handleSubmit((d) => ccMutation.mutate({ ...d, empleado_id: empId } as CuentaCorrienteCreate))}>
+          <Stack gap="sm">
+            <TextInput
+              label="Fecha *"
+              type="date"
+              {...ccForm.register('fecha')}
+              error={ccErrors.fecha?.message}
+            />
+            <TextInput
+              label="Monto *"
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="0.00"
+              {...ccForm.register('monto')}
+              error={ccErrors.monto?.message}
+            />
+            <TextInput
+              label="Descripción"
+              placeholder="Ej: Zapatillas talle 42, Chomba talle L..."
+              {...ccForm.register('descripcion')}
+            />
+            <Button type="submit" loading={ccMutation.isPending}>Guardar cargo</Button>
+          </Stack>
+        </form>
+      </Modal>
 
       {/* Modal agregar horas extras */}
       <Modal opened={hsExtrasOpened} onClose={closeHsExtras} title="Agregar horas extras" size="sm">

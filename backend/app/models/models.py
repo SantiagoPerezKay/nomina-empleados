@@ -257,6 +257,20 @@ class HorasExtras(Base):
     created_at      = Column(DateTime, default=datetime.utcnow)
 
 
+class CuentaCorriente(Base):
+    """Movimientos de cuenta corriente del empleado (compras a descontar en nómina)."""
+    __tablename__ = "cuenta_corriente"
+    id              = Column(Integer, primary_key=True)
+    empleado_id     = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    fecha           = Column(Date, nullable=False)
+    monto           = Column(Numeric(12, 2), nullable=False)   # siempre positivo
+    descripcion     = Column(Text, nullable=True)
+    # nomina_id se setea cuando el cargo fue descontado en una nómina
+    nomina_id       = Column(Integer, ForeignKey("nominas.id"), nullable=True)
+    created_by_id   = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
 class Asistencia(Base):
     __tablename__ = "asistencias"
     id              = Column(Integer, primary_key=True)

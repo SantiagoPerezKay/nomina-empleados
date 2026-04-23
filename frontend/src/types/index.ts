@@ -245,6 +245,25 @@ export interface AsignacionTurnoCreate {
   dia_semana?: number | null
 }
 
+// ── Cuenta Corriente ──────────────────────────────────────────────────────────
+export interface CuentaCorriente {
+  id: number
+  empleado_id: number
+  fecha: string
+  monto: number
+  descripcion: string | null
+  nomina_id: number | null
+  created_by_id: number | null
+  created_by_nombre: string | null
+  created_at: string | null
+}
+export interface CuentaCorrienteCreate {
+  empleado_id: number
+  fecha: string
+  monto: number
+  descripcion?: string
+}
+
 // ── Encargados ────────────────────────────────────────────────────────────────
 export interface Encargado {
   id: number; empleado_id: number; sucursal_id: number
