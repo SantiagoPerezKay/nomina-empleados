@@ -12,6 +12,7 @@ from app.routers.asistencias import router as asistencias_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.reportes import router as reportes_router
 from app.routers.cuenta_corriente import router as cuenta_corriente_router
+from app.routers.integracion import router as integracion_router
 from app.routers.general import (
     cat_egreso_router,
     cat_evento_router,
@@ -48,10 +49,17 @@ STARTUP_MIGRATIONS = [
        ADD COLUMN IF NOT EXISTS horas_cantidad NUMERIC(6,2) NULL""",
     """ALTER TABLE eventos_empleados
        ADD COLUMN IF NOT EXISTS porcentaje_extra SMALLINT NULL""",
-    # Categoría de horas extras (si no existe)
+    # Categoría de horas extras — asegurar que HE_EXTRA exista (es la canónica)
     """INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina, activo)
-       VALUES ('horas_extras', 'Horas extras', true, true, true)
+       VALUES ('HE_EXTRA', 'Horas extras', true, true, true)
        ON CONFLICT (codigo) DO NOTHING""",
+    # Migrar eventos que usen la categoría duplicada 'horas_extras' a 'HE_EXTRA'
+    """UPDATE eventos_empleados
+          SET categoria_evento_id = (SELECT id FROM categorias_evento WHERE codigo = 'HE_EXTRA' LIMIT 1)
+        WHERE categoria_evento_id IN (SELECT id FROM categorias_evento WHERE codigo = 'horas_extras')
+          AND EXISTS (SELECT 1 FROM categorias_evento WHERE codigo = 'HE_EXTRA')""",
+    # Eliminar la categoría duplicada 'horas_extras'
+    """DELETE FROM categorias_evento WHERE codigo = 'horas_extras'""",
     # Conceptos de nómina para horas extras (idempotente)
     """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
        VALUES ('horas_extras_50', 'Horas extras 50%', 'ingreso', 'horas_extras', true)
@@ -91,6 +99,23 @@ STARTUP_MIGRATIONS = [
        ON cuenta_corriente(empleado_id)""",
     """CREATE INDEX IF NOT EXISTS idx_cc_pendiente
        ON cuenta_corriente(empleado_id, nomina_id)""",
+    # Columna monto en eventos (para bono fijo y comisión)
+    """ALTER TABLE eventos_empleados
+       ADD COLUMN IF NOT EXISTS monto NUMERIC(12,2) NULL""",
+    # Categorías de comisión y bono
+    """INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina, activo)
+       VALUES ('COMISION', 'Comisión', true, true, true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    """INSERT INTO categorias_evento (codigo, nombre, requiere_aprobacion, afecta_nomina, activo)
+       VALUES ('BONO', 'Bono', true, true, true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    # Conceptos de nómina para comisión y bono
+    """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
+       VALUES ('comision', 'Comisión', 'ingreso', 'comision', true)
+       ON CONFLICT (codigo) DO NOTHING""",
+    """INSERT INTO conceptos_nomina (codigo, nombre, tipo, categoria, activo)
+       VALUES ('bono', 'Bono', 'ingreso', 'bono', true)
+       ON CONFLICT (codigo) DO NOTHING""",
 ]
 
 
@@ -134,6 +159,7 @@ app.include_router(eventos_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(reportes_router, prefix="/api")
 app.include_router(cuenta_corriente_router, prefix="/api")
+app.include_router(integracion_router, prefix="/api")
 app.include_router(encargados_router, prefix="/api")
 app.include_router(cat_egreso_router, prefix="/api")
 app.include_router(cat_evento_router, prefix="/api")

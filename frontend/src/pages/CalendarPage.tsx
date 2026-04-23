@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Stack, Title, Group, Button, Select, Table, Badge,
   Modal, Textarea, Text, Card, ActionIcon, Tooltip,
-  Box, SimpleGrid, UnstyledButton, TextInput, HoverCard, Divider,
+  Box, SimpleGrid, UnstyledButton, TextInput, HoverCard, Divider, Chip,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
@@ -23,7 +23,7 @@ import { getEmpleados } from '../api/empleados'
 import type { EventoCreate, EventoEmpleado } from '../types'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  addDays, addMonths, subMonths, isSameMonth, isSameDay, isToday,
+  addDays, addMonths, subMonths, isSameMonth, isSameDay, isToday, parseISO,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -49,6 +49,8 @@ export default function CalendarPage() {
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure()
   const [rechazarTarget, setRechazarTarget] = useState<number | null>(null)
   const [rechazarMotivo, setRechazarMotivo] = useState('')
+  // Filtro de categorías: 'all' = todas, o array de IDs como string
+  const [filtrosCat, setFiltrosCat] = useState<string[]>(['all'])
 
   // Fetch events for the visible month range
   const monthStart = startOfMonth(currentMonth)
@@ -149,16 +151,43 @@ export default function CalendarPage() {
     return days
   }, [currentMonth])
 
-  // Map events to dates
+  // Eventos filtrados por categoría seleccionada
+  const eventosFiltrados = useMemo(() => {
+    const all = eventos ?? []
+    if (filtrosCat.includes('all')) return all
+    const ids = new Set(filtrosCat.map(Number))
+    return all.filter(ev => ids.has(ev.categoria_evento_id))
+  }, [eventos, filtrosCat])
+
+  // Categorías presentes en el mes actual (para los chips de filtro)
+  const categoriasEnMes = useMemo(() => {
+    const seen = new Map<number, string>()
+    for (const ev of eventos ?? []) {
+      if (!seen.has(ev.categoria_evento_id)) {
+        seen.set(ev.categoria_evento_id, ev.categoria_nombre ?? `#${ev.categoria_evento_id}`)
+      }
+    }
+    return Array.from(seen.entries()).map(([id, nombre]) => ({ id, nombre }))
+  }, [eventos])
+
+  // Map events to dates — expande eventos multi-día (ej: vacaciones)
   const eventsByDate = useMemo(() => {
     const map = new Map<string, EventoEmpleado[]>()
-    for (const ev of eventos ?? []) {
-      const dateKey = ev.fecha_inicial.slice(0, 10)
-      if (!map.has(dateKey)) map.set(dateKey, [])
-      map.get(dateKey)!.push(ev)
+    for (const ev of eventosFiltrados) {
+      const start = parseISO(ev.fecha_inicial.slice(0, 10))
+      const end = ev.fecha_final ? parseISO(ev.fecha_final.slice(0, 10)) : start
+      let cur = start
+      while (cur <= end) {
+        const key = format(cur, 'yyyy-MM-dd')
+        if (!map.has(key)) map.set(key, [])
+        if (!map.get(key)!.find(e => e.id === ev.id)) {
+          map.get(key)!.push(ev)
+        }
+        cur = addDays(cur, 1)
+      }
     }
     return map
-  }, [eventos])
+  }, [eventosFiltrados])
 
   // Events for selected date
   const selectedEvents = useMemo(() => {
@@ -196,6 +225,32 @@ export default function CalendarPage() {
           Nuevo evento
         </Button>
       </Group>
+
+      {/* Filtros de categoría */}
+      {categoriasEnMes.length > 0 && (
+        <Chip.Group
+          multiple
+          value={filtrosCat}
+          onChange={(vals) => {
+            if (!vals.length) { setFiltrosCat(['all']); return }
+            // Si se selecciona 'all', deseleccionar el resto
+            if (vals.includes('all') && !filtrosCat.includes('all')) {
+              setFiltrosCat(['all'])
+            } else {
+              setFiltrosCat(vals.filter(v => v !== 'all'))
+            }
+          }}
+        >
+          <Group gap="xs" wrap="wrap">
+            <Chip value="all" size="xs" variant="filled">Todos</Chip>
+            {categoriasEnMes.map(cat => (
+              <Chip key={cat.id} value={String(cat.id)} size="xs">
+                {cat.nombre}
+              </Chip>
+            ))}
+          </Group>
+        </Chip.Group>
+      )}
 
       {/* Month navigation */}
       <Card p="md">
@@ -256,21 +311,26 @@ export default function CalendarPage() {
                   {format(day, 'd')}
                 </Text>
                 <Stack gap={2}>
-                  {dayEvents.slice(0, 3).map(ev => (
+                  {dayEvents.slice(0, 3).map(ev => {
+                    const isMultiDay = ev.fecha_final && ev.fecha_final.slice(0,10) !== ev.fecha_inicial.slice(0,10)
+                    const isStart = format(day, 'yyyy-MM-dd') === ev.fecha_inicial.slice(0,10)
+                    return (
                     <Box
                       key={ev.id}
                       px={4} py={1}
                       style={{
                         borderRadius: 4,
                         backgroundColor: `var(--mantine-color-${estadoColor(ev.estado)}-light)`,
+                        borderLeft: isMultiDay ? `3px solid var(--mantine-color-${estadoColor(ev.estado)}-6)` : undefined,
                         overflow: 'hidden',
                       }}
                     >
                       <Text size="xs" truncate lh={1.3}>
-                        {ev.empleado_nombre ?? `#${ev.empleado_id}`}
+                        {isMultiDay && isStart ? '▶ ' : isMultiDay ? '  ' : ''}{ev.empleado_nombre ?? `#${ev.empleado_id}`}
                       </Text>
                     </Box>
-                  ))}
+                    )
+                  })}
                   {dayEvents.length > 3 && (
                     <Text size="xs" c="dimmed" ta="center">+{dayEvents.length - 3} más</Text>
                   )}
@@ -318,6 +378,10 @@ export default function CalendarPage() {
                           {ev.categoria_nombre ?? `Cat. #${ev.categoria_evento_id}`}
                           {ev.horas_cantidad ? ` · ${Number(ev.horas_cantidad).toFixed(1)}h` : ''}
                           {ev.porcentaje_extra ? ` (${ev.porcentaje_extra}%)` : ''}
+                          {ev.monto ? ` · $${Number(ev.monto).toLocaleString('es-AR')}` : ''}
+                          {ev.fecha_final && ev.fecha_final.slice(0,10) !== ev.fecha_inicial.slice(0,10)
+                            ? ` · ${ev.fecha_inicial.slice(0,10)} → ${ev.fecha_final.slice(0,10)}`
+                            : ''}
                         </Text>
                         {ev.observacion && (
                           <Text size="xs" c="dimmed" fs="italic" lineClamp={1}>
