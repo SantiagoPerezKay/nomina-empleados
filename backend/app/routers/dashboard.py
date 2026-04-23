@@ -8,7 +8,8 @@ from decimal import Decimal
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal, CategoriaEvento, PeriodoNomina
+import calendar
+from app.models.models import Empleado, Nomina, EventoEmpleado, Asistencia, Sucursal, CategoriaEvento, PeriodoNomina, Contrato
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -43,17 +44,25 @@ async def obtener_kpis(db: AsyncSession = Depends(get_db), _=Depends(get_current
         select(func.count(Empleado.id)).where(Empleado.activo == True)
     )).scalar() or 0
 
-    # Filtrar por fecha_inicio del período para no sumar períodos de otros meses
-    # ni duplicar si hay más de un período por mes (defensivo).
-    _nom_mes_q = (
-        select(func.sum(Nomina.neto_a_pagar))
-        .join(PeriodoNomina, Nomina.periodo_id == PeriodoNomina.id)
-        .where(
-            func.extract("month", PeriodoNomina.fecha_inicio) == hoy.month,
-            func.extract("year", PeriodoNomina.fecha_inicio) == hoy.year,
-        )
+    # Masa salarial teórica del mes: suma de salarios de contratos activos
+    # de empleados activos — lo que SE DEBERÍA pagar este mes, independiente
+    # de si la nómina fue calculada o no.
+    dias_mes = calendar.monthrange(hoy.year, hoy.month)[1]
+    semanas_mes = dias_mes / 7  # aprox. 4.28 para meses de 30 días
+
+    r_contratos = await db.execute(
+        select(Contrato)
+        .join(Empleado, Contrato.empleado_id == Empleado.id)
+        .where(Contrato.activo == True, Empleado.activo == True)
     )
-    total_nom = (await db.execute(_nom_mes_q)).scalar() or 0.0
+    contratos_activos = r_contratos.scalars().all()
+
+    total_nom = 0.0
+    for c in contratos_activos:
+        if c.tipo_contrato == "mensual" and c.salario_mensual:
+            total_nom += float(c.salario_mensual)
+        elif c.tipo_contrato == "por_hora" and c.tarifa_hora and c.hs_semanales:
+            total_nom += float(c.tarifa_hora) * float(c.hs_semanales) * semanas_mes
 
     _pagadas_q = (
         select(func.sum(func.coalesce(Nomina.monto_pagado, Nomina.neto_a_pagar)))
