@@ -13,7 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   IconPlus, IconCheck, IconX, IconHistory,
   IconUserOff, IconClockExclamation, IconAlertTriangle, IconClockHour8,
-  IconDots,
+  IconDots, IconCoin, IconGift,
 } from '@tabler/icons-react'
 import { getEventos, createEvento, aprobarEvento, rechazarEvento, getHistorialEvento } from '../api/eventos'
 import { getCatEventos, getSucursales } from '../api/general'
@@ -26,10 +26,19 @@ const quickSchema = z.object({
   empleado_id: z.coerce.number().min(1, 'Requerido'),
   fecha: z.string().min(1, 'Requerido'),
   observacion: z.string().optional(),
+  horas_cantidad: z.coerce.number().optional(),
+  porcentaje_extra: z.coerce.number().optional(),
+  monto: z.coerce.number().optional(),
 })
 const quickHsSchema = quickSchema.extend({
   horas_cantidad: z.coerce.number().min(0.25, 'Mín. 0.25h'),
   porcentaje_extra: z.coerce.number().refine(v => v === 50 || v === 100, 'Debe ser 50 o 100'),
+})
+const quickComisionSchema = quickSchema.extend({
+  porcentaje_extra: z.coerce.number().min(0.1, 'Requerido'),
+})
+const quickBonoSchema = quickSchema.extend({
+  monto: z.coerce.number().positive('Debe ser mayor a 0'),
 })
 const createSchema = z.object({
   empleado_id: z.coerce.number().min(1, 'Requerido'),
@@ -40,6 +49,7 @@ const createSchema = z.object({
   sucursal_id: z.coerce.number().optional(),
   horas_cantidad: z.coerce.number().optional(),
   porcentaje_extra: z.coerce.number().optional(),
+  monto: z.coerce.number().optional(),
 })
 const rechazarSchema = z.object({ motivo: z.string().min(1, 'Requerido') })
 
@@ -59,7 +69,7 @@ function findCategoria(cats: CategoriaEvento[] | undefined, codigos: string[]): 
 }
 
 // ── Tipo de acción rápida ─────────────────────────────────────────────────
-type QuickKind = 'falta' | 'tarde' | 'llamada' | 'extras' | null
+type QuickKind = 'falta' | 'tarde' | 'llamada' | 'extras' | 'comision' | 'bono' | null
 
 const QUICK_META: Record<Exclude<QuickKind, null>, {
   title: string
@@ -69,6 +79,8 @@ const QUICK_META: Record<Exclude<QuickKind, null>, {
   codigos: string[]
   needsObservacion?: boolean
   needsHoras?: boolean
+  needsComision?: boolean
+  needsBono?: boolean
 }> = {
   falta: {
     title: 'Registrar falta', label: 'Falta', color: 'red',
@@ -85,6 +97,14 @@ const QUICK_META: Record<Exclude<QuickKind, null>, {
   extras: {
     title: 'Registrar horas extras', label: 'Horas extras', color: 'teal',
     icon: IconClockHour8, codigos: CODIGOS.extras, needsHoras: true,
+  },
+  comision: {
+    title: 'Registrar comisión', label: 'Comisión', color: 'violet',
+    icon: IconCoin, codigos: ['COMISION', 'comision'], needsComision: true,
+  },
+  bono: {
+    title: 'Registrar bono', label: 'Bono', color: 'green',
+    icon: IconGift, codigos: ['BONO', 'bono'], needsBono: true,
   },
 }
 
@@ -152,16 +172,21 @@ export default function EventosPage() {
   })
   const rechazarForm = useForm<z.infer<typeof rechazarSchema>>({ resolver: zodResolver(rechazarSchema) })
 
+  const _quickSchema = quickKind === 'extras' ? quickHsSchema
+    : quickKind === 'comision' ? quickComisionSchema
+    : quickKind === 'bono' ? quickBonoSchema
+    : quickSchema
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const quickForm = useForm<z.infer<typeof quickHsSchema>>({
+  const quickForm = useForm<z.infer<typeof quickSchema>>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver((quickKind === 'extras' ? quickHsSchema : quickSchema) as any) as any,
+    resolver: zodResolver(_quickSchema as any) as any,
     defaultValues: {
       empleado_id: 0,
       fecha: format(new Date(), 'yyyy-MM-dd'),
       observacion: '',
       horas_cantidad: 1,
       porcentaje_extra: 50,
+      monto: undefined,
     },
   })
 
@@ -221,6 +246,12 @@ export default function EventosPage() {
     if (meta.needsHoras) {
       payload.horas_cantidad = d.horas_cantidad
       payload.porcentaje_extra = d.porcentaje_extra
+    }
+    if (meta.needsComision) {
+      payload.porcentaje_extra = d.porcentaje_extra
+    }
+    if (meta.needsBono) {
+      payload.monto = d.monto
     }
     createMutation.mutate(payload as EventoCreate)
   })
@@ -429,6 +460,42 @@ export default function EventosPage() {
                     )}
                   />
                 </Group>
+              )}
+
+              {quickMeta.needsComision && (
+                <Controller
+                  control={quickForm.control}
+                  name="porcentaje_extra"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      label="Porcentaje de comisión % *"
+                      description="Se calcula sobre el salario base del empleado"
+                      min={0.1} step={0.5} decimalScale={2}
+                      suffix="%"
+                      value={field.value}
+                      onChange={(v) => field.onChange(Number(v))}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              )}
+
+              {quickMeta.needsBono && (
+                <Controller
+                  control={quickForm.control}
+                  name="monto"
+                  render={({ field, fieldState }) => (
+                    <NumberInput
+                      label="Monto del bono *"
+                      description="Monto fijo que se suma al sueldo"
+                      min={1} step={100} decimalScale={2}
+                      prefix="$"
+                      value={field.value}
+                      onChange={(v) => field.onChange(Number(v))}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
               )}
 
               <Textarea

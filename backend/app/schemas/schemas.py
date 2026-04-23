@@ -323,7 +323,9 @@ class EventoEmpleadoCreate(BaseSchema):
     up_calendar: bool = False
     # Campos para eventos de horas extras
     horas_cantidad: Optional[Decimal] = None
-    porcentaje_extra: Optional[int] = None   # 50 o 100; None = se determina automáticamente
+    porcentaje_extra: Optional[int] = None   # 50 o 100 (hs extras) / % comisión
+    # Campo para bono (monto fijo) y comisión
+    monto: Optional[Decimal] = None
 
 class EventoEmpleadoUpdate(BaseSchema):
     encargado_id: Optional[int] = None
@@ -334,6 +336,7 @@ class EventoEmpleadoUpdate(BaseSchema):
     up_calendar: Optional[bool] = None
     horas_cantidad: Optional[Decimal] = None
     porcentaje_extra: Optional[int] = None
+    monto: Optional[Decimal] = None
 
 class EventoEmpleadoOut(BaseSchema):
     id: int
@@ -351,6 +354,7 @@ class EventoEmpleadoOut(BaseSchema):
     google_event_id: Optional[str] = None
     horas_cantidad: Optional[Decimal] = None
     porcentaje_extra: Optional[int] = None
+    monto: Optional[Decimal] = None
     created_by_id: Optional[int] = None
     created_at: Optional[datetime] = None
     empleado_nombre: Optional[str] = None

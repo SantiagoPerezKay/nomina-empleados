@@ -181,6 +181,17 @@ async def generar_borrador(
     )
     cats_extra_ids = set(c.id for c in r_cat_extra.scalars().all())
 
+    # ── Buscar categorías de comisión y bono ────────────────────────────────
+    r_cat_comision = await db.execute(
+        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["COMISION", "comision"]))
+    )
+    cats_comision_ids = set(c.id for c in r_cat_comision.scalars().all())
+
+    r_cat_bono = await db.execute(
+        select(CategoriaEvento).where(CategoriaEvento.codigo.in_(["BONO", "bono"]))
+    )
+    cats_bono_ids = set(c.id for c in r_cat_bono.scalars().all())
+
     # ── Buscar categoría de falta injustificada ──────────────────────────────
     r_cat_falta = await db.execute(
         select(CategoriaEvento).where(
@@ -242,7 +253,13 @@ async def generar_borrador(
         db, "horas_extras_100", ["hora_extra_100", "HE_100", "hs_extras_100"],
         "Horas extras 100%", "ingreso", "horas_extras",
     )
-    log.info(f"[NOMINA] Conceptos: desc_id={desc_id}, ext50_id={ext50_id}, ext100_id={ext100_id}")
+    comision_id = await _get_or_create_concepto(
+        db, "comision", ["COMISION"], "Comisión", "ingreso", "comision",
+    )
+    bono_id = await _get_or_create_concepto(
+        db, "bono", ["BONO"], "Bono", "ingreso", "bono",
+    )
+    log.info(f"[NOMINA] Conceptos: desc_id={desc_id}, ext50_id={ext50_id}, ext100_id={ext100_id}, comision_id={comision_id}, bono_id={bono_id}")
 
     valor_dia = float(salario_base) / 30 if (es_mensual and salario_base) else valor_hora * hs_por_dia
 
@@ -299,6 +316,44 @@ async def generar_borrador(
                 )
                 db.add(det)
                 detalles.append(det)
+
+        # Comisión: porcentaje del salario base
+        elif cats_comision_ids and ev.categoria_evento_id in cats_comision_ids:
+            pct_comision = float(ev.porcentaje_extra or 0)
+            monto_comision = float(ev.monto or 0)
+            # Si tiene monto directo lo usa; sino calcula como % del salario base
+            if monto_comision > 0:
+                total = monto_comision
+            elif pct_comision > 0 and salario_base > 0:
+                total = float(salario_base) * pct_comision / 100
+            else:
+                log.info(f"    -- Evento #{ev.id}: COMISION sin monto ni porcentaje, skip")
+                continue
+            log.info(f"    ++ COMISION: ${total:.2f} (concepto_id={comision_id})")
+            det = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=comision_id, tipo="ingreso",
+                cantidad=1, monto_unitario=total, monto_total=total,
+                evento_id=ev.id,
+                observacion=f"Comisión{f' {pct_comision}%' if pct_comision else ''}" + (f" — {ev.observacion}" if ev.observacion else ""),
+            )
+            db.add(det)
+            detalles.append(det)
+
+        # Bono: monto fijo
+        elif cats_bono_ids and ev.categoria_evento_id in cats_bono_ids:
+            monto_bono = float(ev.monto or 0)
+            if monto_bono <= 0:
+                log.info(f"    -- Evento #{ev.id}: BONO sin monto, skip")
+                continue
+            log.info(f"    ++ BONO: ${monto_bono:.2f} (concepto_id={bono_id})")
+            det = NominaDetalle(
+                nomina_id=nomina.id, concepto_id=bono_id, tipo="ingreso",
+                cantidad=1, monto_unitario=monto_bono, monto_total=monto_bono,
+                evento_id=ev.id,
+                observacion=f"Bono" + (f" — {ev.observacion}" if ev.observacion else ""),
+            )
+            db.add(det)
+            detalles.append(det)
 
         # Descuento solo por falta injustificada aprobada (también disparado por evento)
         elif (cats_falta_ids and ev.categoria_evento_id in cats_falta_ids

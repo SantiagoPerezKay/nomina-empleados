@@ -161,7 +161,9 @@ class EventoEmpleado(Base):
     google_event_id     = Column(String(255), nullable=True)
     # Campos para horas extras
     horas_cantidad      = Column(Numeric(6, 2), nullable=True)
-    porcentaje_extra    = Column(Integer, nullable=True)  # 50 o 100
+    porcentaje_extra    = Column(Integer, nullable=True)  # 50, 100, o % de comisión
+    # Campo para bono (monto fijo) y comisión
+    monto               = Column(Numeric(12, 2), nullable=True)
     created_by_id       = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

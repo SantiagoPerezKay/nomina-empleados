@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     # Webhook n8n — opcional, si no está configurado no se envía nada
     WEBHOOK_N8N_EVENTOS_URL: Optional[str] = None
 
+    # API key para integraciones externas (n8n, otros sistemas)
+    # Generá una con: python -c "import secrets; print(secrets.token_hex(32))"
+    INTEGRATION_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
 

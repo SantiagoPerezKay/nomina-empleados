@@ -101,6 +101,7 @@ export interface EventoEmpleado {
   motivo_actualizacion: string | null
   horas_cantidad?: number | string | null
   porcentaje_extra?: number | null
+  monto?: number | string | null
   created_by_id?: number | null
   created_at?: string | null
   empleado_nombre?: string; categoria_nombre?: string; sucursal_nombre?: string
@@ -112,6 +113,7 @@ export interface EventoCreate {
   sucursal_id?: number; encargado_id?: number; observacion?: string
   horas_cantidad?: number
   porcentaje_extra?: number
+  monto?: number
 }
 export interface AprobarEventoRequest { justificado?: boolean }
 export interface RechazarEventoRequest { motivo: string }
